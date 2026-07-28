@@ -461,7 +461,34 @@
             }
         };
 
-        window.deleteAccount = async (id) => { if(confirm('確定刪除帳號？')) await deleteDoc(doc(db, "accounts", id)); };
+        window.deleteAccount = async (id) => {
+            const account = savedAccounts.find(acc => acc.id === id);
+            if (!account) {
+                alert('找不到此帳號，請重新整理後再試。');
+                return;
+            }
+
+            const stockItems = pokemons.filter(
+                p => p.account === account.name && p.status === 'stock'
+            );
+
+            const confirmed = confirm(
+                `確定刪除帳號「${account.name}」？\n\n` +
+                `此帳號的 ${stockItems.length} 筆在庫寶可夢會一併刪除。\n` +
+                '待交換與已完成紀錄會保留。'
+            );
+            if (!confirmed) return;
+
+            try {
+                await Promise.all(
+                    stockItems.map(item => deleteDoc(doc(db, "inventory", item.id)))
+                );
+                await deleteDoc(doc(db, "accounts", id));
+            } catch (error) {
+                console.error('刪除帳號失敗：', error);
+                alert('刪除失敗，請檢查網路後再試一次。');
+            }
+        };
         window.copy = (text, btn) => { navigator.clipboard.writeText(text); const old = btn.innerText; btn.innerText = 'OK!'; btn.style.color = '#10B981'; setTimeout(() => { btn.innerText = old; btn.style.color = ''; }, 1000); };
         
         document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', (e) => {
