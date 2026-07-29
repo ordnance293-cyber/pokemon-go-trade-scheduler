@@ -125,7 +125,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, updateDoc, doc, deleteDoc, orderBy } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, updateDoc, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBG_bVJ6-SxRHPBWyUmQUCICMfsvc9ixg4",
@@ -149,8 +149,13 @@
             return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
         }
 
-        onSnapshot(query(collection(db, "accounts"), orderBy("name")), (snapshot) => {
+        onSnapshot(collection(db, "accounts"), (snapshot) => {
             savedAccounts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            savedAccounts.sort((a, b) => {
+                const aCreatedAt = Number.isFinite(a.createdAt) ? a.createdAt : 0;
+                const bCreatedAt = Number.isFinite(b.createdAt) ? b.createdAt : 0;
+                return bCreatedAt - aCreatedAt || String(a.name || '').localeCompare(String(b.name || ''), 'zh-TW');
+            });
             const select = document.getElementById('accountSelect'), tags = document.getElementById('accountTags');
             select.innerHTML = '<option value="">-- 選擇帳號 --</option>';
             tags.innerHTML = '';
@@ -363,7 +368,7 @@
 
         document.getElementById('saveAccountBtn').addEventListener('click', async () => {
             const name = document.getElementById('newAccountInput').value.trim();
-            if (name) await addDoc(collection(db, "accounts"), { name });
+            if (name) await addDoc(collection(db, "accounts"), { name, createdAt: Date.now() });
             document.getElementById('newAccountInput').value = '';
         });
 
@@ -545,20 +550,10 @@
                 return;
             }
 
-            button.addEventListener('click', async () => {
-                const originalText = button.textContent;
-
-                try {
-                    await navigator.clipboard.writeText(filterText);
-                    button.textContent = '已複製！';
-                } catch (error) {
+            button.addEventListener('click', () => {
+                navigator.clipboard.writeText(filterText).catch((error) => {
                     console.error('複製 Pokémon GO 搜尋條件失敗：', error);
-                    button.textContent = '複製失敗';
-                }
-
-                setTimeout(() => {
-                    button.textContent = originalText;
-                }, 1000);
+                });
             });
         }
 
