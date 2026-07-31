@@ -119,12 +119,16 @@
     </div>
 
     <div id="completeModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
-        <div class="bg-white p-6 rounded-3xl shadow-2xl w-full max-w-[320px] text-center">
-            <h2 class="text-xl font-black text-gray-800 tracking-tight">確認完成交換</h2>
-            <p class="text-sm text-gray-500 font-bold mt-3 leading-relaxed">確定已完成「<span id="completePokemonName" class="text-gray-800"></span>」的交換嗎？</p>
+        <div class="bg-white p-6 rounded-3xl shadow-2xl w-full max-w-[320px] text-center" role="dialog" aria-modal="true" aria-labelledby="completeModalTitle">
+            <h2 id="completeModalTitle" class="text-xl font-black text-gray-800 tracking-tight">確認完成交換</h2>
+            <div class="mt-4 rounded-2xl bg-gray-50 px-4 py-3 text-left text-sm font-bold leading-relaxed">
+                <p class="text-gray-500">寶可夢：<span id="completePokemonName" class="text-gray-800"></span></p>
+                <p class="mt-1 text-gray-500">買家：<span id="completePartnerName" class="text-gray-800"></span></p>
+            </div>
+            <p class="mt-4 text-sm font-bold leading-relaxed text-gray-600">確定這筆交換已經完成嗎？</p>
             <div class="flex gap-2 mt-5">
-                <button id="cancelCompleteBtn" type="button" class="flex-1 py-2 text-gray-400 font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed">取消</button>
-                <button id="confirmCompleteBtn" type="button" class="flex-[2] bg-green-600 text-white py-2 rounded-2xl font-bold hover:bg-green-700 active:scale-95 shadow-md text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">確認完成</button>
+                <button id="cancelCompleteBtn" type="button" class="min-h-11 flex-1 py-2 text-gray-400 font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed">取消</button>
+                <button id="confirmCompleteBtn" type="button" class="min-h-11 flex-[2] bg-green-600 text-white py-2 rounded-2xl font-bold hover:bg-green-700 active:scale-95 shadow-md text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">確認完成</button>
             </div>
         </div>
     </div>
@@ -162,6 +166,7 @@
         const doneSortSelect = document.getElementById('doneSortSelect');
         const completeModal = document.getElementById('completeModal');
         const completePokemonName = document.getElementById('completePokemonName');
+        const completePartnerName = document.getElementById('completePartnerName');
         const cancelCompleteBtn = document.getElementById('cancelCompleteBtn');
         const confirmCompleteBtn = document.getElementById('confirmCompleteBtn');
         let pendingCompleteId = null;
@@ -438,6 +443,7 @@
         function hideCompleteModal() {
             pendingCompleteId = null;
             completePokemonName.textContent = '';
+            completePartnerName.textContent = '';
             completeModal.classList.add('hidden');
         }
 
@@ -456,6 +462,7 @@
             }
 
             completePokemonName.textContent = item.name || '此寶可夢';
+            completePartnerName.textContent = item.partner?.trim() || '未填寫';
             pendingCompleteId = item.id;
             completeModal.classList.remove('hidden');
         };
