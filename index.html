@@ -90,10 +90,16 @@
                     <button class="tab-btn px-4 md:px-6 py-2 rounded-xl text-gray-500 font-bold text-sm" data-tab="all">全部</button>
                     <button id="generateCopyBtn" class="px-4 md:px-6 py-2 rounded-xl bg-purple-600 text-white font-bold text-sm shadow-md hover:bg-purple-700 active:scale-95 transition-all">📝 現貨文案</button>
                 </div>
-                <div class="w-full md:w-auto relative flex items-center">
-                    <span class="absolute left-3 text-gray-400 text-sm">🔍</span>
-                    <input type="text" id="searchInput" placeholder="搜尋寶可夢名稱..." class="w-full md:w-56 pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-sm transition-all">
-                    <button id="clearSearchBtn" class="absolute right-3 text-gray-300 hover:text-gray-500 hidden text-lg font-black leading-none focus:outline-none">&times;</button>
+                <div class="w-full md:w-auto flex flex-wrap items-center gap-2">
+                    <select id="doneSortSelect" class="hidden shrink-0 bg-white border border-gray-200 px-3 py-2 rounded-xl text-sm font-bold shadow-sm outline-none">
+                        <option value="desc">由近到遠</option>
+                        <option value="asc">由遠到近</option>
+                    </select>
+                    <div class="relative flex-1 min-w-0 md:flex-none">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+                        <input type="text" id="searchInput" placeholder="搜尋寶可夢名稱..." class="w-full md:w-56 pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-sm transition-all">
+                        <button id="clearSearchBtn" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500 hidden text-lg font-black leading-none focus:outline-none">&times;</button>
+                    </div>
                 </div>
             </div>
             <div id="pokemonList" class="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4"></div>
@@ -125,7 +131,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, updateDoc, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, updateDoc, doc, deleteDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBG_bVJ6-SxRHPBWyUmQUCICMfsvc9ixg4",
@@ -142,11 +148,65 @@
         let currentTab = 'stock', pokemons = [], savedAccounts = [], selectedId = null, selectedAccName = null;
         const searchInput = document.getElementById('searchInput');
         const clearSearchBtn = document.getElementById('clearSearchBtn');
+        const doneSortSelect = document.getElementById('doneSortSelect');
 
         // Helper: 獲取今日日期字串 YYYY-MM-DD
         function getTodayStr() {
             const today = new Date();
             return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        }
+
+        function getCompletedAtMs(item) {
+            const value = item?.completedAt;
+            return Number.isFinite(value) && value > 0 ? value : null;
+        }
+
+        function getCreatedAtMs(item) {
+            const value = item?.createdAt;
+            return Number.isFinite(value) && value > 0 ? value : 0;
+        }
+
+        function formatCompletedAt(item) {
+            const timestamp = getCompletedAtMs(item);
+            if (timestamp === null) return '未紀錄';
+
+            const date = new Date(timestamp);
+            if (Number.isNaN(date.getTime())) return '未紀錄';
+
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hour = String(date.getHours()).padStart(2, '0');
+            const minute = String(date.getMinutes()).padStart(2, '0');
+
+            return `${year}/${month}/${day} ${hour}:${minute}`;
+        }
+
+        function compareDoneItems(a, b, direction) {
+            const aCompletedAt = getCompletedAtMs(a);
+            const bCompletedAt = getCompletedAtMs(b);
+
+            if (aCompletedAt === null && bCompletedAt !== null) return 1;
+            if (aCompletedAt !== null && bCompletedAt === null) return -1;
+
+            if (
+                aCompletedAt !== null &&
+                bCompletedAt !== null &&
+                aCompletedAt !== bCompletedAt
+            ) {
+                return direction === 'asc'
+                    ? aCompletedAt - bCompletedAt
+                    : bCompletedAt - aCompletedAt;
+            }
+
+            const createdAtDifference =
+                getCreatedAtMs(b) - getCreatedAtMs(a);
+
+            if (createdAtDifference !== 0) {
+                return createdAtDifference;
+            }
+
+            return String(a?.id || '').localeCompare(String(b?.id || ''));
         }
 
         onSnapshot(collection(db, "accounts"), (snapshot) => {
@@ -412,6 +472,12 @@
                 });
             }
 
+            if (currentTab === 'done') {
+                filtered.sort((a, b) =>
+                    compareDoneItems(a, b, doneSortSelect.value)
+                );
+            }
+
             let fastestDate = null;
             if (searchText !== '' && currentTab === 'stock') {
                 const stockItems = filtered.filter(p => p.status === 'stock');
@@ -442,6 +508,7 @@
                     action = `<div class="flex flex-col items-start gap-1.5 shrink-0"><button onclick="restoreToStock('${p.id}')" class="bg-slate-600 text-white px-3 py-2 rounded-xl text-xs md:text-sm font-bold shadow-md active:scale-95 whitespace-nowrap min-w-[72px] shrink-0">恢復在庫</button><div class="flex items-center gap-1 md:gap-2"><button onclick="updateStatus('${p.id}', 'done')" class="bg-green-600 text-white px-4 md:px-5 py-2 rounded-xl text-xs md:text-sm font-bold shadow-md min-w-[72px] shrink-0">完成</button><button onclick="deleteItem('${p.id}')" class="text-red-200 hover:text-red-400 p-2 text-lg leading-none">&times;</button></div></div>`;
                 } else if (p.status === 'done') {
                     tag = '<span class="text-green-700 text-[9px] md:text-[10px] font-black bg-green-50 px-2 py-0.5 rounded border border-green-100 uppercase shrink-0">Done</span>';
+                    tag += `<span class="text-gray-500 text-[9px] md:text-[10px] font-bold shrink-0">完成：${formatCompletedAt(p)}</span>`;
                     actionIncludesDelete = true;
                     action = `<div class="flex flex-col items-start gap-1.5 shrink-0"><button onclick="restoreToStock('${p.id}')" class="bg-slate-600 text-white px-3 py-2 rounded-xl text-xs md:text-sm font-bold shadow-md active:scale-95 whitespace-nowrap min-w-[72px] shrink-0">恢復在庫</button><div class="flex items-center gap-1 md:gap-2"><div class="bg-green-500 text-white px-3 md:px-4 py-2 rounded-xl text-[10px] md:text-xs font-black min-w-[72px] text-center shrink-0">已完成</div><button onclick="deleteItem('${p.id}')" class="text-red-200 hover:text-red-400 p-2 text-lg leading-none">&times;</button></div></div>`;
                 }
@@ -455,7 +522,8 @@
         
         window.updateStatus = async (id, status) => {
             const item = pokemons.find(p => p.id === id);
-            await updateDoc(doc(db, "inventory", id), { status });
+            const updates = status === 'done' ? { status: 'done', completedAt: Date.now() } : { status };
+            await updateDoc(doc(db, "inventory", id), updates);
             if (status === 'done' && item) {
                 setTimeout(() => window.repackSchedule(item.account), 800);
             }
@@ -475,7 +543,8 @@
                 await updateDoc(doc(db, "inventory", item.id), {
                     status: 'stock',
                     partner: '',
-                    tradeDate: ''
+                    tradeDate: '',
+                    completedAt: deleteField()
                 });
             } catch (error) {
                 console.error('恢復在庫失敗：', error);
@@ -533,10 +602,13 @@
         
         document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', (e) => {
             currentTab = e.target.dataset.tab;
+            doneSortSelect.classList.toggle('hidden', currentTab !== 'done');
             document.querySelectorAll('.tab-btn').forEach(b => b.className = "tab-btn px-4 md:px-6 py-2 rounded-xl text-gray-500 font-bold text-sm");
             e.target.className = "tab-btn px-4 md:px-6 py-2 rounded-xl bg-blue-600 text-white font-bold text-sm shadow-md";
             clearSearch(); 
         }));
+
+        doneSortSelect.addEventListener('change', render);
 
         document.getElementById('generateCopyBtn').addEventListener('click', () => {
             const stockItems = pokemons.filter(p => p.status === 'stock');
