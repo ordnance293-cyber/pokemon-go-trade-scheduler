@@ -92,7 +92,7 @@
                 </div>
                 <div class="w-full md:w-auto relative flex items-center">
                     <span class="absolute left-3 text-gray-400 text-sm">🔍</span>
-                    <input type="text" id="searchInput" placeholder="搜尋寶可夢或帳號..." class="w-full md:w-56 pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-sm transition-all">
+                    <input type="text" id="searchInput" placeholder="搜尋寶可夢名稱..." class="w-full md:w-56 pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-sm transition-all">
                     <button id="clearSearchBtn" class="absolute right-3 text-gray-300 hover:text-gray-500 hidden text-lg font-black leading-none focus:outline-none">&times;</button>
                 </div>
             </div>
@@ -311,12 +311,12 @@
             return finalDateStr;
         }
 
-        window.repackSchedule = async (accName) => {
+        window.repackSchedule = async (accName, excludedItemId = null) => {
             const todayStr = getTodayStr();
-            const pendingTrades = pokemons.filter(p => p.account === accName && p.status === 'trading');
+            const pendingTrades = pokemons.filter(p => p.id !== excludedItemId && p.account === accName && p.status === 'trading');
             pendingTrades.sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
 
-            const occupiedDates = new Set(pokemons.filter(p => p.account === accName && p.status === 'done' && p.tradeDate >= todayStr).map(p => p.tradeDate));
+            const occupiedDates = new Set(pokemons.filter(p => p.id !== excludedItemId && p.account === accName && p.status === 'done' && p.tradeDate >= todayStr).map(p => p.tradeDate));
 
             for (let item of pendingTrades) {
                 let checkDate = new Date();
@@ -393,7 +393,7 @@
 
             let filtered = pokemons.filter(p => {
                 const matchTab = currentTab === 'all' ? true : p.status === currentTab;
-                const matchSearch = p.name.toLowerCase().includes(searchText) || p.account.toLowerCase().includes(searchText);
+                const matchSearch = String(p.name || '').toLowerCase().includes(searchText);
                 return matchTab && matchSearch;
             });
 
@@ -420,12 +420,12 @@
                 }
             }
 
-            if (!filtered.length) { list.innerHTML = '<div class="col-span-full text-center py-10 text-gray-400 italic text-sm">找不到符合的寶可夢或帳號</div>'; return; }
+            if (!filtered.length) { list.innerHTML = '<div class="col-span-full text-center py-10 text-gray-400 italic text-sm">找不到符合的寶可夢</div>'; return; }
             
             filtered.forEach(p => {
                 const div = document.createElement('div');
                 div.className = "bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between transition-all";
-                let action = '', tag = '';
+                let action = '', tag = '', actionIncludesDelete = false;
                 
                 if (p.status === 'stock') {
                     const isFastest = (searchText !== '' && p.nextDateStr === fastestDate);
@@ -438,13 +438,15 @@
                     action = `<button onclick="openTrade('${p.id}', '${p.account}')" class="bg-orange-500 text-white px-4 md:px-5 py-2 rounded-xl text-xs md:text-sm font-bold shadow-md shrink-0">安排</button>`;
                 } else if (p.status === 'trading') {
                     tag = `<span class="text-orange-600 text-[9px] md:text-[10px] font-black bg-orange-50 px-2 py-0.5 rounded border border-orange-200 shrink-0">${p.tradeDate} 待交換</span>`;
-                    action = `<button onclick="updateStatus('${p.id}', 'done')" class="bg-green-600 text-white px-4 md:px-5 py-2 rounded-xl text-xs md:text-sm font-bold shadow-md shrink-0">完成</button>`;
-                } else {
+                    actionIncludesDelete = true;
+                    action = `<div class="flex flex-col items-start gap-1.5 shrink-0"><button onclick="restoreToStock('${p.id}')" class="bg-slate-600 text-white px-3 py-2 rounded-xl text-xs md:text-sm font-bold shadow-md active:scale-95 whitespace-nowrap min-w-[72px] shrink-0">恢復在庫</button><div class="flex items-center gap-1 md:gap-2"><button onclick="updateStatus('${p.id}', 'done')" class="bg-green-600 text-white px-4 md:px-5 py-2 rounded-xl text-xs md:text-sm font-bold shadow-md min-w-[72px] shrink-0">完成</button><button onclick="deleteItem('${p.id}')" class="text-red-200 hover:text-red-400 p-2 text-lg leading-none">&times;</button></div></div>`;
+                } else if (p.status === 'done') {
                     tag = '<span class="text-green-700 text-[9px] md:text-[10px] font-black bg-green-50 px-2 py-0.5 rounded border border-green-100 uppercase shrink-0">Done</span>';
-                    action = `<div class="bg-green-500 text-white px-3 md:px-4 py-2 rounded-xl text-[10px] md:text-xs font-black shrink-0">已完成</div>`;
+                    actionIncludesDelete = true;
+                    action = `<div class="flex flex-col items-start gap-1.5 shrink-0"><button onclick="restoreToStock('${p.id}')" class="bg-slate-600 text-white px-3 py-2 rounded-xl text-xs md:text-sm font-bold shadow-md active:scale-95 whitespace-nowrap min-w-[72px] shrink-0">恢復在庫</button><div class="flex items-center gap-1 md:gap-2"><div class="bg-green-500 text-white px-3 md:px-4 py-2 rounded-xl text-[10px] md:text-xs font-black min-w-[72px] text-center shrink-0">已完成</div><button onclick="deleteItem('${p.id}')" class="text-red-200 hover:text-red-400 p-2 text-lg leading-none">&times;</button></div></div>`;
                 }
                 
-                div.innerHTML = `<div class="flex flex-col flex-1 min-w-0 w-full md:pr-2"><div class="flex flex-col md:flex-row md:items-center gap-2 md:gap-2 mb-2 md:mb-1"><div class="flex flex-wrap items-center gap-1.5 md:gap-2">${tag}</div><div class="flex items-center gap-1 min-w-0 w-full md:w-auto"><span class="text-[9px] md:text-[10px] text-gray-400 font-mono truncate min-w-0">@${p.account}</span><button onclick="copy('${p.account}', this)" class="text-[9px] md:text-[10px] text-blue-400 font-bold shrink-0">複製</button></div></div><span class="text-base md:text-lg font-black text-gray-800 truncate w-full">${p.name}</span>${p.partner ? `<div class="flex items-center gap-2 mt-0.5 min-w-0"><span class="text-[10px] text-indigo-500 font-bold uppercase tracking-tighter truncate min-w-0">買家: ${p.partner}</span><button onclick="copy('${p.partner}', this)" class="text-[9px] text-indigo-400 font-bold shrink-0">複製</button></div>` : ''}</div><div class="flex items-center justify-end gap-1 md:gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0">${action}<button onclick="deleteItem('${p.id}')" class="text-red-200 hover:text-red-400 p-2 text-lg leading-none">&times;</button></div>`;
+                div.innerHTML = `<div class="flex flex-col flex-1 min-w-0 w-full md:pr-2"><div class="flex flex-col md:flex-row md:items-center gap-2 md:gap-2 mb-2 md:mb-1"><div class="flex flex-wrap items-center gap-1.5 md:gap-2">${tag}</div><div class="flex items-center gap-1 min-w-0 w-full md:w-auto"><span class="text-[9px] md:text-[10px] text-gray-400 font-mono truncate min-w-0">@${p.account}</span><button onclick="copy('${p.account}', this)" class="text-[9px] md:text-[10px] text-blue-400 font-bold shrink-0">複製</button></div></div><span class="text-base md:text-lg font-black text-gray-800 truncate w-full">${p.name}</span>${p.partner ? `<div class="flex items-center gap-2 mt-0.5 min-w-0"><span class="text-[10px] text-indigo-500 font-bold uppercase tracking-tighter truncate min-w-0">買家: ${p.partner}</span><button onclick="copy('${p.partner}', this)" class="text-[9px] text-indigo-400 font-bold shrink-0">複製</button></div>` : ''}</div><div class="flex items-center justify-end gap-1 md:gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0">${action}${actionIncludesDelete ? '' : `<button onclick="deleteItem('${p.id}')" class="text-red-200 hover:text-red-400 p-2 text-lg leading-none">&times;</button>`}</div>`;
                 list.appendChild(div);
             });
         }
@@ -456,6 +458,36 @@
             await updateDoc(doc(db, "inventory", id), { status });
             if (status === 'done' && item) {
                 setTimeout(() => window.repackSchedule(item.account), 800);
+            }
+        };
+
+        window.restoreToStock = async (id) => {
+            const item = pokemons.find(p => p.id === id);
+            if (!item || !['trading', 'done'].includes(item.status)) {
+                alert('找不到可恢復的寶可夢，請重新整理後再試。');
+                return;
+            }
+
+            const confirmed = confirm(`確定要將「${item.name}」恢復在庫嗎？\n\n買家與交換日期會被清除，該帳號後續待交換排程會自動往前遞補。`);
+            if (!confirmed) return;
+
+            try {
+                await updateDoc(doc(db, "inventory", item.id), {
+                    status: 'stock',
+                    partner: '',
+                    tradeDate: ''
+                });
+            } catch (error) {
+                console.error('恢復在庫失敗：', error);
+                alert('恢復在庫失敗，請檢查網路後再試一次。');
+                return;
+            }
+
+            try {
+                await window.repackSchedule(item.account, item.id);
+            } catch (error) {
+                console.error('已恢復在庫，但重新排列待交換排程失敗：', error);
+                alert('寶可夢已恢復在庫，但待交換排程自動遞補失敗，請稍後再試。');
             }
         };
 
