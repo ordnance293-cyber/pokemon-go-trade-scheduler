@@ -606,16 +606,24 @@
 
         document.getElementById('cancelTradeBtn').addEventListener('click', () => document.getElementById('tradeModal').classList.add('hidden'));
         
+        function isActiveInventoryStatus(status) {
+            return status === 'stock' || status === 'trading';
+        }
+
+        function hasActiveInventory(items) {
+            return items.some(item => isActiveInventoryStatus(item.status));
+        }
+
         async function removeAccountIfNoActiveInventory(accountName) {
             const accountInventory = await getDocs(query(
                 collection(db, "inventory"),
                 where("account", "==", accountName)
             ));
-            const hasActiveInventory = accountInventory.docs.some(inventoryDoc =>
-                ['stock', 'trading'].includes(inventoryDoc.data().status)
+            const accountHasActiveInventory = hasActiveInventory(
+                accountInventory.docs.map(inventoryDoc => inventoryDoc.data())
             );
 
-            if (hasActiveInventory) return;
+            if (accountHasActiveInventory) return;
 
             const matchingAccounts = await getDocs(query(
                 collection(db, "accounts"),
