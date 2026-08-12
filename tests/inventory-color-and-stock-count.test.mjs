@@ -24,7 +24,7 @@ function functionSource(name) {
 }
 
 function loadHelpers() {
-    const names = ['normalizeInventoryYear', 'normalizeColorType', 'normalizeBackCardType', 'formatInventoryMetadata', 'formatInventoryCopyText', 'getInventoryGroupingKey', 'getStockInventoryCount', 'parseCopyPrices', 'buildStockCopyLines', 'getCopyPriceResult'];
+    const names = ['normalizeInventoryYear', 'normalizeColorType', 'normalizeBackCardType', 'formatInventoryMetadata', 'formatInventoryCopyText', 'getInventoryGroupingKey', 'getStockInventoryCount', 'parseCopyPrices', 'buildStockCopyLines', 'getCopyPriceResult', 'insertPriceSeparator'];
     const source = names.map(functionSource).join('\n');
     return vm.runInNewContext(`(() => { ${source}; return { ${names.join(',')} }; })()`);
 }
@@ -157,9 +157,38 @@ test('empty stock rejects prices and keeps the empty stock copy', () => {
 });
 
 test('copy price controls are modal-only and do not write inventory data', () => {
-    assert.match(html, /id="copyPriceInput"/);
+    assert.match(html, /id="copyPriceInput"[^>]*inputmode="numeric"/);
+    assert.match(html, /id="insertPriceSeparatorBtn"[^>]*type="button"[^>]*>\s*,\s*<\/button>/);
     assert.match(html, /id="applyCopyPricesBtn"[^>]*>套用價格<\/button>/);
     const priceHandler = moduleScript.slice(moduleScript.indexOf("document.getElementById('applyCopyPricesBtn').addEventListener"), moduleScript.indexOf("document.getElementById('closeCopyModalBtn')"));
     assert.doesNotMatch(priceHandler, /addDoc|setDoc|updateDoc|localStorage|price\s*:/);
     assert.match(priceHandler, /if \(result\.ok\) document\.getElementById\('copyTextarea'\)\.value = result\.text/);
+});
+
+test('price separator inserts at the caret, replaces selections, and restores focus', () => {
+    const { insertPriceSeparator } = loadHelpers();
+    const makeInput = (value, selectionStart, selectionEnd) => ({
+        value,
+        selectionStart,
+        selectionEnd,
+        focused: false,
+        setRangeText(replacement, start, end) {
+            this.value = this.value.slice(0, start) + replacement + this.value.slice(end);
+            this.selectionStart = this.selectionEnd = start + replacement.length;
+        },
+        focus() { this.focused = true; }
+    });
+
+    for (const [value, start, end, expected] of [
+        ['450350', 3, 3, '450,350'],
+        ['450', 3, 3, '450,'],
+        ['450999350', 3, 6, '450,350']
+    ]) {
+        const input = makeInput(value, start, end);
+        insertPriceSeparator(input);
+        assert.equal(input.value, expected);
+        assert.equal(input.selectionStart, 4);
+        assert.equal(input.selectionEnd, 4);
+        assert.equal(input.focused, true);
+    }
 });
