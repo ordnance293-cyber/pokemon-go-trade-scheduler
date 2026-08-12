@@ -850,9 +850,9 @@
             for (const { label, quantity } of groups.values()) {
                 // 🔥 修改：當數量為 1 時，不顯示備註；大於 1 才顯示「（現貨X隻）」
                 if (quantity === 1) {
-                    text += `${label}\n`;
+                    text += `🔥 ${label}\n`;
                 } else {
-                    text += `${label}（現貨${quantity}隻）\n`;
+                    text += `🔥 ${label}（現貨${quantity}隻）\n`;
                 }
             }
             
