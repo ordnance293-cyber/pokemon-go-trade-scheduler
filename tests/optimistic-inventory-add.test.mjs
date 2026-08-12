@@ -69,6 +69,7 @@ test('form resets immediately without clearing the selected account', () => {
     assert.match(immediate, /quantityInput'\)\.value = '1'/);
     assert.match(immediate, /yearSelect'\)\.value = '2026'/);
     assert.match(immediate, /backCardSelect'\)\.value = 'none'/);
+    assert.match(immediate, /colorTypeSelect'\)\.value = 'shiny'/);
     assert.doesNotMatch(handler, /accountSelect'\)\.value\s*=/);
 });
 
@@ -76,6 +77,14 @@ test('quantity loop stages one unit item and unique ref for every background wri
     const handler = addHandlerSource();
     assert.match(handler, /for \(let i = 0; i < qty; i\+\+\)[\s\S]*?const ref = doc\(collection\(db, "inventory"\)\)[\s\S]*?quantity: 1[\s\S]*?pendingInventoryItems\.set\(ref\.id, item\)[\s\S]*?writes\.push\(\{ ref, data \}\)/);
     assert.match(handler, /writes\.map\(\(\{ ref, data \}\) => setDoc\(ref, data\)/);
+});
+
+test('color type is part of data before optimistic staging and persistence', () => {
+    const handler = addHandlerSource();
+    const data = handler.indexOf('const data = { account: acc, name, year, colorType, backCardType');
+    const stage = handler.indexOf('pendingInventoryItems.set(ref.id, item)');
+    const persist = handler.indexOf('setDoc(ref, data)');
+    assert.ok(data !== -1 && stage > data && persist > stage);
 });
 
 test('snapshot reconciliation deduplicates synced IDs without dropping other pending IDs', () => {
