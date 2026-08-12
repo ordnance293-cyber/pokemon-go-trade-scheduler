@@ -97,3 +97,12 @@ test('copy modal count uses the same effective pokemons snapshot', () => {
     assert.doesNotMatch(handler, /syncedPokemons/);
     assert.match(handler, /copyStockCount'\)\.textContent = `總庫存：\$\{getStockInventoryCount\(stockItems\)\} 隻`/);
 });
+
+test('stock copy prefixes non-empty lines with fire and one space while preserving the empty message', () => {
+    const handler = moduleScript.slice(moduleScript.indexOf("document.getElementById('generateCopyBtn').addEventListener"), moduleScript.indexOf("document.getElementById('closeCopyModalBtn')"));
+    assert.match(handler, /if \(quantity === 1\) \{\s*text \+= `🔥 \$\{label\}\\n`;/);
+    assert.match(handler, /else \{\s*text \+= `🔥 \$\{label\}（現貨\$\{quantity\}隻）\\n`;/);
+    assert.doesNotMatch(handler, /text \+= `🔥\$\{label\}/);
+    assert.match(handler, /if \(!text\) text = "目前無現貨寶可夢。";/);
+    assert.doesNotMatch(handler, /🔥 目前無現貨寶可夢。/);
+});
