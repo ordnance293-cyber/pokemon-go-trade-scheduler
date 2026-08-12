@@ -97,3 +97,10 @@ test('copy modal count uses the same effective pokemons snapshot', () => {
     assert.doesNotMatch(handler, /syncedPokemons/);
     assert.match(handler, /copyStockCount'\)\.textContent = `總庫存：\$\{getStockInventoryCount\(stockItems\)\} 隻`/);
 });
+
+test('stock copy lines use fire emoji followed by exactly one space', () => {
+    assert.match(moduleScript, /text \+= `🔥 \$\{label\}\\n`/);
+    assert.match(moduleScript, /text \+= `🔥 \$\{label\}（現貨\$\{quantity\}隻）\\n`/);
+    assert.doesNotMatch(moduleScript, /text \+= `🔥\$\{label\}/);
+    assert.match(moduleScript, /if \(!text\) text = "目前無現貨寶可夢。"/);
+});
