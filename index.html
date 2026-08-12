@@ -39,8 +39,6 @@
         .drag-item:active { cursor: grabbing; }
         
         .sortable-ghost { opacity: 0.4; background-color: #ffedd5; border: 2px dashed #f97316; }
-        .color-type-option { min-height: 42px; transition: color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease; }
-        .color-type-option[aria-pressed="true"] { background: white; color: #7c3aed; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18); }
     </style>
 </head>
 <body class="p-3 md:p-8 font-sans text-gray-900">
@@ -104,11 +102,10 @@
                 </div>
                 <div class="space-y-1 md:col-span-2">
                     <label class="block text-[10px] md:text-xs font-bold text-blue-600 ml-1 uppercase">色違</label>
-                    <div class="grid grid-cols-2 gap-1 rounded-xl bg-purple-100 p-1 shadow-inner" role="group" aria-label="色違">
-                        <button id="normalColorBtn" type="button" class="color-type-option rounded-lg text-sm font-bold text-purple-500" aria-pressed="false">普色</button>
-                        <button id="shinyColorBtn" type="button" class="color-type-option rounded-lg text-sm font-bold text-purple-500" aria-pressed="true">異色</button>
-                    </div>
-                    <input id="colorTypeInput" type="hidden" value="shiny">
+                    <select id="colorTypeSelect" class="border-0 bg-white p-2.5 rounded-xl w-full shadow-sm text-sm">
+                        <option value="normal">普色</option>
+                        <option value="shiny" selected>異色</option>
+                    </select>
                 </div>
                 <div class="col-span-2 md:col-span-2 space-y-1">
                     <label class="block text-[10px] md:text-xs font-bold text-blue-600 ml-1 uppercase">寶可夢名稱</label>
@@ -626,20 +623,10 @@
             document.getElementById('newAccountInput').value = '';
         });
 
-        function setColorType(value) {
-            const colorType = normalizeColorType(value);
-            document.getElementById('colorTypeInput').value = colorType;
-            document.getElementById('normalColorBtn').setAttribute('aria-pressed', String(colorType === 'normal'));
-            document.getElementById('shinyColorBtn').setAttribute('aria-pressed', String(colorType === 'shiny'));
-        }
-
-        document.getElementById('normalColorBtn').addEventListener('click', () => setColorType('normal'));
-        document.getElementById('shinyColorBtn').addEventListener('click', () => setColorType('shiny'));
-
         document.getElementById('addPokemonBtn').addEventListener('click', async () => {
             const acc = document.getElementById('accountSelect').value, name = document.getElementById('pokemonInput').value.trim(), qty = parseInt(document.getElementById('quantityInput').value) || 1;
             const year = Number(document.getElementById('yearSelect').value);
-            const colorType = normalizeColorType(document.getElementById('colorTypeInput').value);
+            const colorType = normalizeColorType(document.getElementById('colorTypeSelect').value);
             const backCardType = document.getElementById('backCardSelect').value;
             if (!acc || !name) return alert("請填寫");
             const writes = [];
@@ -655,7 +642,7 @@
             document.getElementById('quantityInput').value = '1';
             document.getElementById('yearSelect').value = '2026';
             document.getElementById('backCardSelect').value = 'none';
-            setColorType('shiny');
+            document.getElementById('colorTypeSelect').value = 'shiny';
             rebuildEffectiveInventory();
             render();
 

@@ -69,7 +69,7 @@ test('form resets immediately without clearing the selected account', () => {
     assert.match(immediate, /quantityInput'\)\.value = '1'/);
     assert.match(immediate, /yearSelect'\)\.value = '2026'/);
     assert.match(immediate, /backCardSelect'\)\.value = 'none'/);
-    assert.match(immediate, /setColorType\('shiny'\)/);
+    assert.match(immediate, /colorTypeSelect'\)\.value = 'shiny'/);
     assert.doesNotMatch(handler, /accountSelect'\)\.value\s*=/);
 });
 

@@ -29,16 +29,25 @@ function loadHelpers() {
     return vm.runInNewContext(`(() => { ${source}; return { ${names.join(',')} }; })()`);
 }
 
-test('color type is a shiny-default accessible button segment, not a select', () => {
-    assert.doesNotMatch(html, /<select[^>]*id="colorType/i);
-    const normal = html.match(/<button[^>]*id="normalColorBtn"[^>]*>普色<\/button>/)?.[0];
-    const shiny = html.match(/<button[^>]*id="shinyColorBtn"[^>]*>異色<\/button>/)?.[0];
-    assert.ok(normal && shiny);
-    assert.match(normal, /type="button"/);
-    assert.match(shiny, /type="button"/);
-    assert.match(normal, /aria-pressed="false"/);
-    assert.match(shiny, /aria-pressed="true"/);
-    assert.match(html, /<input[^>]*id="colorTypeInput"[^>]*value="shiny"/);
+test('color type is a shiny-default native select with exact options', () => {
+    const select = html.match(/<select[^>]*id="colorTypeSelect"[^>]*>([\s\S]*?)<\/select>/);
+    assert.ok(select, 'colorTypeSelect should be a native select');
+    assert.deepEqual(
+        [...select[1].matchAll(/<option\s+value="([^"]+)"([^>]*)>([^<]+)<\/option>/g)]
+            .map(([, value, attributes, label]) => ({ value, label, selected: /\bselected\b/.test(attributes) })),
+        [
+            { value: 'normal', label: '普色', selected: false },
+            { value: 'shiny', label: '異色', selected: true }
+        ]
+    );
+    for (const oldId of ['normalColorBtn', 'shinyColorBtn', 'colorTypeInput']) {
+        assert.doesNotMatch(html, new RegExp(oldId));
+    }
+    assert.doesNotMatch(moduleScript, /setColorType\s*\(/);
+});
+
+test('optimistic add reads and normalizes the native color select', () => {
+    assert.match(moduleScript, /const colorType = normalizeColorType\(document\.getElementById\('colorTypeSelect'\)\.value\)/);
 });
 
 test('color normalization defaults unknown and legacy values to normal', () => {

@@ -74,7 +74,7 @@ test('successful add keeps account and resets all other inventory controls', () 
     assert.match(handler[1], /quantityInput'\)\.value = '1'/);
     assert.match(handler[1], /yearSelect'\)\.value = '2026'/);
     assert.match(handler[1], /backCardSelect'\)\.value = 'none'/);
-    assert.match(handler[1], /setColorType\('shiny'\)/);
+    assert.match(handler[1], /colorTypeSelect'\)\.value = 'shiny'/);
 });
 
 test('metadata helpers format copy without whitespace and keep groups independent', () => {
