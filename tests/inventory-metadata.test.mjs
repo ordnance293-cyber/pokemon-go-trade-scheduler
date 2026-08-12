@@ -24,6 +24,7 @@ function optionValues(markup) {
 function loadMetadataHelpers() {
     const names = [
         'normalizeInventoryYear',
+        'normalizeColorType',
         'normalizeBackCardType',
         'formatInventoryMetadata',
         'formatInventoryCopyText',
@@ -62,7 +63,7 @@ test('year and back-card selectors have the exact option and default contracts',
 test('new inventory records persist metadata with all existing fields', () => {
     assert.match(moduleScript, /const year = Number\(document\.getElementById\('yearSelect'\)\.value\)/);
     assert.match(moduleScript, /const backCardType = document\.getElementById\('backCardSelect'\)\.value/);
-    assert.match(moduleScript, /\{ account: acc, name, year, backCardType, quantity: 1, status: 'stock', partner: '', tradeDate: '', createdAt:/);
+    assert.match(moduleScript, /\{ account: acc, name, year, colorType, backCardType, quantity: 1, status: 'stock', partner: '', tradeDate: '', createdAt:/);
 });
 
 test('successful add keeps account and resets all other inventory controls', () => {
@@ -73,6 +74,7 @@ test('successful add keeps account and resets all other inventory controls', () 
     assert.match(handler[1], /quantityInput'\)\.value = '1'/);
     assert.match(handler[1], /yearSelect'\)\.value = '2026'/);
     assert.match(handler[1], /backCardSelect'\)\.value = 'none'/);
+    assert.match(handler[1], /setColorType\('shiny'\)/);
 });
 
 test('metadata helpers format copy without whitespace and keep groups independent', () => {
@@ -94,7 +96,7 @@ test('legacy records render and copy without invented or broken metadata', () =>
     const legacy = { name: '超夢', status: 'stock' };
     assert.equal(helpers.normalizeInventoryYear(legacy.year), null);
     assert.equal(helpers.normalizeBackCardType(legacy.backCardType), 'none');
-    assert.equal(helpers.formatInventoryMetadata(legacy), '');
+    assert.equal(helpers.formatInventoryMetadata(legacy), '普色');
     assert.equal(helpers.formatInventoryCopyText(legacy), '超夢');
     assert.doesNotMatch(helpers.formatInventoryCopyText(legacy), /undefined|2026|26年/);
     assert.notEqual(

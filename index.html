@@ -39,6 +39,8 @@
         .drag-item:active { cursor: grabbing; }
         
         .sortable-ghost { opacity: 0.4; background-color: #ffedd5; border: 2px dashed #f97316; }
+        .color-type-option { min-height: 42px; transition: color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease; }
+        .color-type-option[aria-pressed="true"] { background: white; color: #7c3aed; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18); }
     </style>
 </head>
 <body class="p-3 md:p-8 font-sans text-gray-900">
@@ -70,7 +72,7 @@
                 <h2 class="text-lg md:text-xl font-bold text-gray-800">新增庫存</h2>
             </div>
             <div class="grid grid-cols-2 md:grid-cols-12 gap-3 md:gap-4 p-3 md:p-4 bg-white/50 rounded-2xl border border-white/50">
-                <div class="col-span-2 md:col-span-3 space-y-1">
+                <div class="col-span-2 md:col-span-2 space-y-1">
                     <label class="block text-[10px] md:text-xs font-bold text-blue-600 ml-1 uppercase">選擇帳號</label>
                     <select id="accountSelect" class="border-0 bg-white p-2.5 rounded-xl w-full shadow-sm text-sm">
                         <option value="">-- 選擇帳號 --</option>
@@ -100,7 +102,15 @@
                         <option value="commemorative">紀念背卡</option>
                     </select>
                 </div>
-                <div class="col-span-2 md:col-span-3 space-y-1">
+                <div class="space-y-1 md:col-span-2">
+                    <label class="block text-[10px] md:text-xs font-bold text-blue-600 ml-1 uppercase">色違</label>
+                    <div class="grid grid-cols-2 gap-1 rounded-xl bg-purple-100 p-1 shadow-inner" role="group" aria-label="色違">
+                        <button id="normalColorBtn" type="button" class="color-type-option rounded-lg text-sm font-bold text-purple-500" aria-pressed="false">普色</button>
+                        <button id="shinyColorBtn" type="button" class="color-type-option rounded-lg text-sm font-bold text-purple-500" aria-pressed="true">異色</button>
+                    </div>
+                    <input id="colorTypeInput" type="hidden" value="shiny">
+                </div>
+                <div class="col-span-2 md:col-span-2 space-y-1">
                     <label class="block text-[10px] md:text-xs font-bold text-blue-600 ml-1 uppercase">寶可夢名稱</label>
                     <input type="text" id="pokemonInput" placeholder="輸入寶可夢名稱" class="border-0 bg-white p-2.5 rounded-xl w-full shadow-sm text-sm">
                 </div>
@@ -176,7 +186,8 @@
 
     <div id="copyModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div class="bg-white p-6 rounded-3xl shadow-2xl w-full max-w-[400px]">
-            <h2 class="text-xl font-black text-gray-800 tracking-tight mb-4 text-center">📝 現貨文案</h2>
+            <h2 class="text-xl font-black text-gray-800 tracking-tight text-center">📝 現貨文案</h2>
+            <p id="copyStockCount" class="mb-4 mt-1 text-center text-sm font-bold text-purple-600">總庫存：0 隻</p>
             <textarea id="copyTextarea" class="w-full h-48 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-400 outline-none text-sm font-bold resize-none mb-4 text-gray-700"></textarea>
             <div class="flex gap-2">
                 <button id="closeCopyModalBtn" class="flex-1 py-2 text-gray-400 font-bold text-sm">關閉</button>
@@ -235,28 +246,37 @@
             return Number.isInteger(value) && value >= 2016 && value <= 2026 ? value : null;
         }
 
+        function normalizeColorType(value) {
+            return value === 'shiny' ? 'shiny' : 'normal';
+        }
+
         function normalizeBackCardType(value) {
             return value === 'special' || value === 'commemorative' ? value : 'none';
         }
 
         function formatInventoryMetadata(item) {
             const year = normalizeInventoryYear(item?.year);
-            if (year === null) return '';
+            const colorLabel = normalizeColorType(item?.colorType) === 'shiny' ? '異色' : '普色';
             const backCardLabels = { none: '', special: '特別背卡', commemorative: '紀念背卡' };
             const backCardLabel = backCardLabels[normalizeBackCardType(item?.backCardType)];
-            return `${String(year).slice(-2)}年${backCardLabel ? ` | ${backCardLabel}` : ''}`;
+            return [year === null ? '' : `${String(year).slice(-2)}年`, colorLabel, backCardLabel].filter(Boolean).join(' | ');
         }
 
         function formatInventoryCopyText(item) {
             const year = normalizeInventoryYear(item?.year);
             const backCardLabels = { none: '', special: '特別背卡', commemorative: '紀念背卡' };
             const yearLabel = year === null ? '' : `${String(year).slice(-2)}年`;
+            const colorLabel = normalizeColorType(item?.colorType) === 'shiny' ? '異色' : '';
             const backCardLabel = backCardLabels[normalizeBackCardType(item?.backCardType)];
-            return `${yearLabel}${backCardLabel}${item?.name || ''}`;
+            return `${yearLabel}${colorLabel}${backCardLabel}${item?.name || ''}`;
         }
 
         function getInventoryGroupingKey(item) {
-            return JSON.stringify([normalizeInventoryYear(item?.year), normalizeBackCardType(item?.backCardType), item?.name || '']);
+            return JSON.stringify([normalizeInventoryYear(item?.year), normalizeColorType(item?.colorType), normalizeBackCardType(item?.backCardType), item?.name || '']);
+        }
+
+        function getStockInventoryCount(items) {
+            return items.filter(item => item.status === 'stock').length;
         }
 
         function formatCompletedAt(item) {
@@ -606,16 +626,27 @@
             document.getElementById('newAccountInput').value = '';
         });
 
+        function setColorType(value) {
+            const colorType = normalizeColorType(value);
+            document.getElementById('colorTypeInput').value = colorType;
+            document.getElementById('normalColorBtn').setAttribute('aria-pressed', String(colorType === 'normal'));
+            document.getElementById('shinyColorBtn').setAttribute('aria-pressed', String(colorType === 'shiny'));
+        }
+
+        document.getElementById('normalColorBtn').addEventListener('click', () => setColorType('normal'));
+        document.getElementById('shinyColorBtn').addEventListener('click', () => setColorType('shiny'));
+
         document.getElementById('addPokemonBtn').addEventListener('click', async () => {
             const acc = document.getElementById('accountSelect').value, name = document.getElementById('pokemonInput').value.trim(), qty = parseInt(document.getElementById('quantityInput').value) || 1;
             const year = Number(document.getElementById('yearSelect').value);
+            const colorType = normalizeColorType(document.getElementById('colorTypeInput').value);
             const backCardType = document.getElementById('backCardSelect').value;
             if (!acc || !name) return alert("請填寫");
             const writes = [];
             const createdAt = new Date().getTime();
             for (let i = 0; i < qty; i++) {
                 const ref = doc(collection(db, "inventory"));
-                const data = { account: acc, name, year, backCardType, quantity: 1, status: 'stock', partner: '', tradeDate: '', createdAt: createdAt + i };
+                const data = { account: acc, name, year, colorType, backCardType, quantity: 1, status: 'stock', partner: '', tradeDate: '', createdAt: createdAt + i };
                 const item = { id: ref.id, ...data };
                 pendingInventoryItems.set(ref.id, item);
                 writes.push({ ref, data });
@@ -624,6 +655,7 @@
             document.getElementById('quantityInput').value = '1';
             document.getElementById('yearSelect').value = '2026';
             document.getElementById('backCardSelect').value = 'none';
+            setColorType('shiny');
             rebuildEffectiveInventory();
             render();
 
@@ -817,6 +849,7 @@
 
         document.getElementById('generateCopyBtn').addEventListener('click', () => {
             const stockItems = pokemons.filter(p => p.status === 'stock');
+            document.getElementById('copyStockCount').textContent = `總庫存：${getStockInventoryCount(stockItems)} 隻`;
             const groups = new Map();
             
             stockItems.forEach(p => {
