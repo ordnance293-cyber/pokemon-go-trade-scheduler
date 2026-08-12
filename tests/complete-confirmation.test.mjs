@@ -58,7 +58,7 @@ test('trading completion button opens the custom confirmation modal', () => {
 test('opening confirmation validates the current item and displays its name safely', () => {
     assert.match(
         moduleScript,
-        /window\.openCompleteConfirmation = \(id\) => \{[\s\S]*?pokemons\.find\(p => p\.id === id\)[\s\S]*?item\.status !== 'trading'[\s\S]*?completePokemonName\.textContent = item\.name \|\| '此寶可夢';[\s\S]*?pendingCompleteId = item\.id;[\s\S]*?completeModal\.classList\.remove\('hidden'\);[\s\S]*?\};/
+        /window\.openCompleteConfirmation = \(id\) => \{[\s\S]*?pokemons\.find\(p => p\.id === id\)[\s\S]*?item\.status !== 'trading'[\s\S]*?completePokemonName\.textContent = formatInventoryCopyText\(item\) \|\| '此寶可夢';[\s\S]*?pendingCompleteId = item\.id;[\s\S]*?completeModal\.classList\.remove\('hidden'\);[\s\S]*?\};/
     );
 });
 
