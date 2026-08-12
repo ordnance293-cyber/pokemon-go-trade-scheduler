@@ -187,7 +187,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, updateDoc, doc, deleteDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, setDoc, onSnapshot, query, updateDoc, doc, deleteDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBG_bVJ6-SxRHPBWyUmQUCICMfsvc9ixg4",
@@ -201,7 +201,9 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        let currentTab = 'stock', pokemons = [], savedAccounts = [], selectedId = null, selectedAccName = null;
+        let currentTab = 'stock', pokemons = [], syncedPokemons = [], savedAccounts = [], selectedId = null, selectedAccName = null;
+        const pendingInventoryItems = new Map();
+        const failedInventoryItemIds = new Set();
         const searchInput = document.getElementById('searchInput');
         const clearSearchBtn = document.getElementById('clearSearchBtn');
         const doneSortSelect = document.getElementById('doneSortSelect');
@@ -300,6 +302,19 @@
             return String(a?.id || '').localeCompare(String(b?.id || ''));
         }
 
+        function mergeInventoryItems(syncedItems, pendingItems) {
+            const syncedIds = new Set(syncedItems.map(item => item.id));
+            return [
+                ...syncedItems,
+                ...Array.from(pendingItems.values()).filter(item => !syncedIds.has(item.id))
+            ];
+        }
+
+        function rebuildEffectiveInventory() {
+            pokemons = mergeInventoryItems(syncedPokemons, pendingInventoryItems);
+            pokemons.sort((a, b) => (a.tradeDate || '9999').localeCompare(b.tradeDate || '9999') || b.createdAt - a.createdAt);
+        }
+
         onSnapshot(collection(db, "accounts"), (snapshot) => {
             savedAccounts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             savedAccounts.sort((a, b) => {
@@ -337,8 +352,12 @@
         }
 
         onSnapshot(query(collection(db, "inventory")), (snapshot) => {
-            pokemons = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            pokemons.sort((a, b) => (a.tradeDate || '9999').localeCompare(b.tradeDate || '9999') || b.createdAt - a.createdAt);
+            syncedPokemons = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() }))
+                .filter(item => !failedInventoryItemIds.has(item.id));
+            const syncedIds = new Set(syncedPokemons.map(item => item.id));
+            syncedIds.forEach(id => pendingInventoryItems.delete(id));
+            rebuildEffectiveInventory();
             
             checkAndRescheduleOverdue(); 
             render(); renderTimeline();
@@ -592,11 +611,38 @@
             const year = Number(document.getElementById('yearSelect').value);
             const backCardType = document.getElementById('backCardSelect').value;
             if (!acc || !name) return alert("請填寫");
-            for (let i = 0; i < qty; i++) { await addDoc(collection(db, "inventory"), { account: acc, name, year, backCardType, quantity: 1, status: 'stock', partner: '', tradeDate: '', createdAt: new Date().getTime() + i }); }
+            const writes = [];
+            const createdAt = new Date().getTime();
+            for (let i = 0; i < qty; i++) {
+                const ref = doc(collection(db, "inventory"));
+                const data = { account: acc, name, year, backCardType, quantity: 1, status: 'stock', partner: '', tradeDate: '', createdAt: createdAt + i };
+                const item = { id: ref.id, ...data };
+                pendingInventoryItems.set(ref.id, item);
+                writes.push({ ref, data });
+            }
             document.getElementById('pokemonInput').value = '';
             document.getElementById('quantityInput').value = '1';
             document.getElementById('yearSelect').value = '2026';
             document.getElementById('backCardSelect').value = 'none';
+            rebuildEffectiveInventory();
+            render();
+
+            setTimeout(() => {
+                let failureReported = false;
+                writes.map(({ ref, data }) => setDoc(ref, data).catch(error => {
+                    console.error('新增庫存失敗：', error);
+                    pendingInventoryItems.delete(ref.id);
+                    failedInventoryItemIds.add(ref.id);
+                    syncedPokemons = syncedPokemons.filter(item => item.id !== ref.id);
+                    rebuildEffectiveInventory();
+                    render();
+                    renderTimeline();
+                    if (!failureReported) {
+                        failureReported = true;
+                        alert('新增庫存失敗，請檢查網路後重新新增。');
+                    }
+                }));
+            }, 0);
         });
 
         searchInput.addEventListener('input', () => {
