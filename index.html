@@ -185,6 +185,9 @@
         <div class="bg-white p-6 rounded-3xl shadow-2xl w-full max-w-[400px]">
             <h2 class="text-xl font-black text-gray-800 tracking-tight text-center">📝 現貨文案</h2>
             <p id="copyStockCount" class="mb-4 mt-1 text-center text-sm font-bold text-purple-600">總庫存：0 隻</p>
+            <textarea id="copyPriceInput" rows="2" inputmode="numeric" placeholder="例如：450 350 400" class="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-400 outline-none text-sm resize-none text-gray-700"></textarea>
+            <button id="applyCopyPricesBtn" type="button" class="w-full mt-2 mb-1 bg-orange-500 text-white py-2 rounded-xl font-bold hover:bg-orange-600 active:scale-95 shadow-md text-sm transition-all">套用價格</button>
+            <p id="copyPriceMessage" class="min-h-5 mb-2 text-sm font-bold text-red-600" role="alert" aria-live="polite"></p>
             <textarea id="copyTextarea" class="w-full h-48 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-400 outline-none text-sm font-bold resize-none mb-4 text-gray-700"></textarea>
             <div class="flex gap-2">
                 <button id="closeCopyModalBtn" class="flex-1 py-2 text-gray-400 font-bold text-sm">關閉</button>
@@ -210,6 +213,7 @@
         const db = getFirestore(app);
 
         let currentTab = 'stock', pokemons = [], syncedPokemons = [], savedAccounts = [], selectedId = null, selectedAccName = null;
+        let currentCopyGroups = [];
         const pendingInventoryItems = new Map();
         const failedInventoryItemIds = new Set();
         const searchInput = document.getElementById('searchInput');
@@ -274,6 +278,32 @@
 
         function getStockInventoryCount(items) {
             return items.filter(item => item.status === 'stock').length;
+        }
+
+        function parseCopyPrices(text) {
+            const trimmed = text.trim();
+            if (!trimmed || !/^[\d\s,]+$/.test(trimmed)) return null;
+            const prices = trimmed.split(/[\s,]+/);
+            return prices.every(price => /^[1-9]\d*$/.test(price)) ? prices.map(Number) : null;
+        }
+
+        function buildStockCopyLines(groups, prices = null) {
+            if (!groups.length) return '目前無現貨寶可夢。';
+            return groups.map(({ label, quantity }, index) => {
+                const stockLabel = quantity === 1 ? label : `${label}（現貨${quantity}隻）`;
+                const priceLabel = prices ? `｜1隻${prices[index]}元` : '';
+                return `🔥 ${stockLabel}${priceLabel}`;
+            }).join('\n');
+        }
+
+        function getCopyPriceResult(groups, text) {
+            if (!groups.length) return { ok: false, message: '目前沒有現貨文案可套用價格' };
+            const prices = parseCopyPrices(text);
+            if (!prices) return { ok: false, message: '價格格式錯誤，請輸入正整數並以空格、逗號或換行分隔' };
+            if (prices.length !== groups.length) {
+                return { ok: false, message: `需要 ${groups.length} 個價格，目前${prices.length < groups.length ? '只有' : '有'} ${prices.length} 個` };
+            }
+            return { ok: true, text: buildStockCopyLines(groups, prices) };
         }
 
         function formatCompletedAt(item) {
@@ -845,21 +875,21 @@
                 group.quantity += 1;
                 groups.set(key, group);
             });
-            
-            let text = "";
-            for (const { label, quantity } of groups.values()) {
-                // 🔥 修改：當數量為 1 時，不顯示備註；大於 1 才顯示「（現貨X隻）」
-                if (quantity === 1) {
-                    text += `🔥 ${label}\n`;
-                } else {
-                    text += `🔥 ${label}（現貨${quantity}隻）\n`;
-                }
-            }
-            
-            if (!text) text = "目前無現貨寶可夢。";
-            
-            document.getElementById('copyTextarea').value = text.trim();
+
+            currentCopyGroups = Array.from(groups.values());
+            document.getElementById('copyPriceInput').value = '';
+            document.getElementById('copyPriceMessage').textContent = '';
+            document.getElementById('copyTextarea').value = buildStockCopyLines(currentCopyGroups);
             document.getElementById('copyModal').classList.remove('hidden');
+        });
+
+        document.getElementById('applyCopyPricesBtn').addEventListener('click', () => {
+            const result = getCopyPriceResult(currentCopyGroups, document.getElementById('copyPriceInput').value);
+            const message = document.getElementById('copyPriceMessage');
+            message.textContent = result.ok ? '價格已套用' : result.message;
+            message.classList.toggle('text-red-600', !result.ok);
+            message.classList.toggle('text-green-600', result.ok);
+            if (result.ok) document.getElementById('copyTextarea').value = result.text;
         });
 
         document.getElementById('closeCopyModalBtn').addEventListener('click', () => {
