@@ -19,5 +19,5 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Run completion confirmation tests
-        run: node --test tests/complete-confirmation.test.mjs
+      - name: Run repository tests
+        run: node --test tests/*.test.mjs
