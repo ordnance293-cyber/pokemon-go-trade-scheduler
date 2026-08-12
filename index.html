@@ -186,7 +186,10 @@
             <h2 class="text-xl font-black text-gray-800 tracking-tight text-center">📝 現貨文案</h2>
             <p id="copyStockCount" class="mb-4 mt-1 text-center text-sm font-bold text-purple-600">總庫存：0 隻</p>
             <textarea id="copyPriceInput" rows="2" inputmode="numeric" placeholder="例如：450 350 400" class="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-400 outline-none text-sm resize-none text-gray-700"></textarea>
-            <button id="applyCopyPricesBtn" type="button" class="w-full mt-2 mb-1 bg-orange-500 text-white py-2 rounded-xl font-bold hover:bg-orange-600 active:scale-95 shadow-md text-sm transition-all">套用價格</button>
+            <div class="flex gap-2 mt-2 mb-1">
+                <button id="insertPriceSeparatorBtn" type="button" class="min-h-11 flex-[1] bg-gray-100 text-gray-700 py-2 rounded-xl font-black hover:bg-gray-200 active:scale-95 shadow-sm text-lg transition-all" aria-label="插入逗號">,</button>
+                <button id="applyCopyPricesBtn" type="button" class="min-h-11 flex-[3] bg-orange-500 text-white py-2 rounded-xl font-bold hover:bg-orange-600 active:scale-95 shadow-md text-sm transition-all">套用價格</button>
+            </div>
             <p id="copyPriceMessage" class="min-h-5 mb-2 text-sm font-bold text-red-600" role="alert" aria-live="polite"></p>
             <textarea id="copyTextarea" class="w-full h-48 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-400 outline-none text-sm font-bold resize-none mb-4 text-gray-700"></textarea>
             <div class="flex gap-2">
@@ -864,6 +867,13 @@
 
         doneSortSelect.addEventListener('change', render);
 
+        function insertPriceSeparator(input) {
+            const start = input.selectionStart ?? input.value.length;
+            const end = input.selectionEnd ?? start;
+            input.setRangeText(',', start, end, 'end');
+            input.focus();
+        }
+
         document.getElementById('generateCopyBtn').addEventListener('click', () => {
             const stockItems = pokemons.filter(p => p.status === 'stock');
             document.getElementById('copyStockCount').textContent = `總庫存：${getStockInventoryCount(stockItems)} 隻`;
@@ -882,6 +892,11 @@
             document.getElementById('copyTextarea').value = buildStockCopyLines(currentCopyGroups);
             document.getElementById('copyModal').classList.remove('hidden');
         });
+
+        const copyPriceInput = document.getElementById('copyPriceInput');
+        const insertPriceSeparatorBtn = document.getElementById('insertPriceSeparatorBtn');
+        insertPriceSeparatorBtn.addEventListener('mousedown', (event) => event.preventDefault());
+        insertPriceSeparatorBtn.addEventListener('click', () => insertPriceSeparator(copyPriceInput));
 
         document.getElementById('applyCopyPricesBtn').addEventListener('click', () => {
             const result = getCopyPriceResult(currentCopyGroups, document.getElementById('copyPriceInput').value);
