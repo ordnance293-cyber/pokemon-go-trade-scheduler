@@ -173,7 +173,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, updateDoc, doc, deleteDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, where, getDocs, updateDoc, doc, deleteDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBG_bVJ6-SxRHPBWyUmQUCICMfsvc9ixg4",
@@ -665,11 +665,40 @@
 
         document.getElementById('cancelTradeBtn').addEventListener('click', () => document.getElementById('tradeModal').classList.add('hidden'));
         
+        function isActiveInventoryStatus(status) {
+            return status === 'stock' || status === 'trading';
+        }
+
+        function hasActiveInventory(items) {
+            return items.some(item => isActiveInventoryStatus(item.status));
+        }
+
+        async function removeAccountIfNoActiveInventory(accountName) {
+            const accountInventory = await getDocs(query(
+                collection(db, "inventory"),
+                where("account", "==", accountName)
+            ));
+            const accountHasActiveInventory = hasActiveInventory(
+                accountInventory.docs.map(inventoryDoc => inventoryDoc.data())
+            );
+
+            if (accountHasActiveInventory) return;
+
+            const matchingAccounts = await getDocs(query(
+                collection(db, "accounts"),
+                where("name", "==", accountName)
+            ));
+            await Promise.all(matchingAccounts.docs.map(accountDoc =>
+                deleteDoc(doc(db, "accounts", accountDoc.id))
+            ));
+        }
+
         window.updateStatus = async (id, status) => {
             const item = pokemons.find(p => p.id === id);
             const updates = status === 'done' ? { status: 'done', completedAt: Date.now() } : { status };
             await updateDoc(doc(db, "inventory", id), updates);
             if (status === 'done' && item) {
+                await removeAccountIfNoActiveInventory(item.account);
                 setTimeout(() => window.repackSchedule(item.account), 800);
             }
         };
