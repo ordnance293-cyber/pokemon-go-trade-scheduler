@@ -24,7 +24,7 @@ function functionSource(name) {
 }
 
 function loadHelpers() {
-    const names = ['normalizeInventoryYear', 'normalizeColorType', 'normalizeBackCardType', 'formatInventoryMetadata', 'formatInventoryCopyText', 'getInventoryGroupingKey', 'getStockInventoryCount'];
+    const names = ['normalizeInventoryYear', 'normalizeColorType', 'normalizeBackCardType', 'formatInventoryMetadata', 'formatInventoryCopyText', 'getInventoryGroupingKey', 'getStockInventoryCount', 'parseCopyPrices', 'buildStockCopyLines', 'getCopyPriceResult'];
     const source = names.map(functionSource).join('\n');
     return vm.runInNewContext(`(() => { ${source}; return { ${names.join(',')} }; })()`);
 }
@@ -98,11 +98,68 @@ test('copy modal count uses the same effective pokemons snapshot', () => {
     assert.match(handler, /copyStockCount'\)\.textContent = `總庫存：\$\{getStockInventoryCount\(stockItems\)\} 隻`/);
 });
 
-test('stock copy prefixes non-empty lines with fire and one space while preserving the empty message', () => {
-    const handler = moduleScript.slice(moduleScript.indexOf("document.getElementById('generateCopyBtn').addEventListener"), moduleScript.indexOf("document.getElementById('closeCopyModalBtn')"));
-    assert.match(handler, /if \(quantity === 1\) \{\s*text \+= `🔥 \$\{label\}\\n`;/);
-    assert.match(handler, /else \{\s*text \+= `🔥 \$\{label\}（現貨\$\{quantity\}隻）\\n`;/);
-    assert.doesNotMatch(handler, /text \+= `🔥\$\{label\}/);
-    assert.match(handler, /if \(!text\) text = "目前無現貨寶可夢。";/);
-    assert.doesNotMatch(handler, /🔥 目前無現貨寶可夢。/);
+test('stock copy prefixes grouped lines while preserving quantity and the empty message', () => {
+    const { buildStockCopyLines } = loadHelpers();
+    assert.equal(buildStockCopyLines([{ label: 'A', quantity: 1 }]), '🔥 A');
+    assert.equal(buildStockCopyLines([{ label: 'A', quantity: 2 }]), '🔥 A（現貨2隻）');
+    assert.equal(buildStockCopyLines([]), '目前無現貨寶可夢。');
+});
+
+test('copy prices accept spaces, commas, and newlines', () => {
+    const { parseCopyPrices } = loadHelpers();
+    assert.deepEqual(Array.from(parseCopyPrices('450 350 400')), [450, 350, 400]);
+    assert.deepEqual(Array.from(parseCopyPrices('450,350,400')), [450, 350, 400]);
+    assert.deepEqual(Array.from(parseCopyPrices('450\n350\n400')), [450, 350, 400]);
+    for (const invalid of ['abc', '-100', '12.5', '0']) assert.equal(parseCopyPrices(invalid), null);
+});
+
+test('copy prices are paired with grouped lines in display order', () => {
+    const { buildStockCopyLines } = loadHelpers();
+    const groups = [
+        { label: 'A', quantity: 1 },
+        { label: 'B', quantity: 1 },
+        { label: 'C', quantity: 1 }
+    ];
+    assert.equal(
+        buildStockCopyLines(groups, [450, 350, 400]),
+        '🔥 A｜1隻450元\n🔥 B｜1隻350元\n🔥 C｜1隻400元'
+    );
+    assert.equal(buildStockCopyLines([{ label: 'A', quantity: 2 }], [400]), '🔥 A（現貨2隻）｜1隻400元');
+});
+
+test('price count mismatch is rejected without producing partial copy', () => {
+    const { getCopyPriceResult } = loadHelpers();
+    const groups = Array.from({ length: 8 }, (_, index) => ({ label: String(index), quantity: 1 }));
+    assert.deepEqual(
+        { ...getCopyPriceResult(groups, '1 2 3 4 5 6 7') },
+        { ok: false, message: '需要 8 個價格，目前只有 7 個' }
+    );
+    assert.deepEqual(
+        { ...getCopyPriceResult(groups, '1 2 3 4 5 6 7 8 9') },
+        { ok: false, message: '需要 8 個價格，目前有 9 個' }
+    );
+});
+
+test('reapplying prices rebuilds copy from the original groups', () => {
+    const { getCopyPriceResult } = loadHelpers();
+    const groups = [{ label: 'A', quantity: 1 }];
+    assert.equal(getCopyPriceResult(groups, '450').text, '🔥 A｜1隻450元');
+    assert.equal(getCopyPriceResult(groups, '500').text, '🔥 A｜1隻500元');
+});
+
+test('empty stock rejects prices and keeps the empty stock copy', () => {
+    const { buildStockCopyLines, getCopyPriceResult } = loadHelpers();
+    assert.equal(buildStockCopyLines([]), '目前無現貨寶可夢。');
+    assert.deepEqual(
+        { ...getCopyPriceResult([], '400') },
+        { ok: false, message: '目前沒有現貨文案可套用價格' }
+    );
+});
+
+test('copy price controls are modal-only and do not write inventory data', () => {
+    assert.match(html, /id="copyPriceInput"/);
+    assert.match(html, /id="applyCopyPricesBtn"[^>]*>套用價格<\/button>/);
+    const priceHandler = moduleScript.slice(moduleScript.indexOf("document.getElementById('applyCopyPricesBtn').addEventListener"), moduleScript.indexOf("document.getElementById('closeCopyModalBtn')"));
+    assert.doesNotMatch(priceHandler, /addDoc|setDoc|updateDoc|localStorage|price\s*:/);
+    assert.match(priceHandler, /if \(result\.ok\) document\.getElementById\('copyTextarea'\)\.value = result\.text/);
 });
