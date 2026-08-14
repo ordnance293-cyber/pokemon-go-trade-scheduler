@@ -158,10 +158,31 @@
         <div class="bg-white p-6 rounded-3xl shadow-2xl w-full max-w-[300px] text-center">
             <h2 class="text-xl font-black text-gray-800 tracking-tight">安排交換</h2>
             <p id="targetAccLabel" class="text-blue-500 text-sm font-bold mt-1"></p>
-            <input type="text" id="partnerInput" placeholder="買家名稱" class="border border-gray-200 p-3 rounded-2xl w-full mt-4 text-center focus:ring-2 focus:ring-orange-400 outline-none font-bold text-sm">
+            <input type="text" id="partnerInput" placeholder="買家名稱" class="border border-gray-200 p-3 rounded-2xl w-full mt-4 text-center focus:ring-2 focus:ring-orange-400 outline-none font-bold text-base">
+            <div class="grid grid-cols-1 gap-2 mt-3">
+                <button id="luckyTrinketBuyerBtn" type="button" aria-pressed="false" class="min-h-11 rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-500">亮晶晶首飾（他出）</button>
+                <button id="luckyTrinketSellerBtn" type="button" aria-pressed="false" class="min-h-11 rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-500">亮晶晶首飾（我出）</button>
+            </div>
             <div class="flex gap-2 mt-5">
-                <button id="cancelTradeBtn" class="flex-1 py-2 text-gray-400 font-bold text-sm">取消</button>
-                <button id="confirmTradeBtn" class="flex-[2] bg-orange-500 text-white py-2 rounded-2xl font-bold hover:bg-orange-600 active:scale-95 shadow-md text-sm transition-all">確認排隊</button>
+                <button id="cancelTradeBtn" type="button" class="min-h-11 flex-1 py-2 text-gray-400 font-bold text-sm">取消</button>
+                <button id="confirmTradeBtn" type="button" class="min-h-11 flex-[2] bg-orange-500 text-white py-2 rounded-2xl font-bold hover:bg-orange-600 active:scale-95 shadow-md text-sm transition-all">確認排隊</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="editTradeModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-white p-6 rounded-3xl shadow-2xl w-full max-w-[320px] text-center" role="dialog" aria-modal="true" aria-labelledby="editTradeModalTitle">
+            <h2 id="editTradeModalTitle" class="text-xl font-black text-gray-800 tracking-tight">編輯交換</h2>
+            <p id="editTradeAccountLabel" class="text-blue-500 text-sm font-bold mt-1"></p>
+            <p id="editTradePokemonLabel" class="text-gray-700 text-sm font-black mt-1"></p>
+            <input type="text" id="editTradePartnerInput" placeholder="買家名稱" class="border border-gray-200 p-3 rounded-2xl w-full mt-4 text-center focus:ring-2 focus:ring-orange-400 outline-none font-bold text-base">
+            <div class="grid grid-cols-1 gap-2 mt-3">
+                <button id="editLuckyTrinketBuyerBtn" type="button" aria-pressed="false" class="min-h-11 rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-500">亮晶晶首飾（他出）</button>
+                <button id="editLuckyTrinketSellerBtn" type="button" aria-pressed="false" class="min-h-11 rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-500">亮晶晶首飾（我出）</button>
+            </div>
+            <div class="flex gap-2 mt-5">
+                <button id="cancelEditTradeBtn" type="button" class="min-h-11 flex-1 py-2 text-gray-400 font-bold text-sm">取消</button>
+                <button id="saveEditTradeBtn" type="button" class="min-h-11 flex-[2] bg-orange-500 text-white py-2 rounded-2xl font-bold active:scale-95 shadow-md text-sm transition-all">儲存修改</button>
             </div>
         </div>
     </div>
@@ -216,6 +237,9 @@
         const db = getFirestore(app);
 
         let currentTab = 'stock', pokemons = [], syncedPokemons = [], savedAccounts = [], selectedId = null, selectedAccName = null;
+        let selectedLuckyTrinket = null;
+        let editingTradeId = null;
+        let editingLuckyTrinket = null;
         let currentCopyGroups = [];
         const pendingInventoryItems = new Map();
         const failedInventoryItemIds = new Set();
@@ -227,8 +251,55 @@
         const completePartnerName = document.getElementById('completePartnerName');
         const cancelCompleteBtn = document.getElementById('cancelCompleteBtn');
         const confirmCompleteBtn = document.getElementById('confirmCompleteBtn');
+        const luckyTrinketBuyerBtn = document.getElementById('luckyTrinketBuyerBtn');
+        const luckyTrinketSellerBtn = document.getElementById('luckyTrinketSellerBtn');
+        const editTradeModal = document.getElementById('editTradeModal');
+        const editTradeAccountLabel = document.getElementById('editTradeAccountLabel');
+        const editTradePokemonLabel = document.getElementById('editTradePokemonLabel');
+        const editTradePartnerInput = document.getElementById('editTradePartnerInput');
+        const editLuckyTrinketBuyerBtn = document.getElementById('editLuckyTrinketBuyerBtn');
+        const editLuckyTrinketSellerBtn = document.getElementById('editLuckyTrinketSellerBtn');
+        const cancelEditTradeBtn = document.getElementById('cancelEditTradeBtn');
+        const saveEditTradeBtn = document.getElementById('saveEditTradeBtn');
         let pendingCompleteId = null;
         let isCompleting = false;
+
+        function normalizeLuckyTrinket(value) {
+            return value === 'buyer' || value === 'seller' ? value : null;
+        }
+
+        function getLuckyTrinketLabel(value) {
+            if (value === 'buyer') return '亮晶晶首飾（他出）';
+            if (value === 'seller') return '亮晶晶首飾（我出）';
+            return '';
+        }
+
+        function getLuckyTrinketShortLabel(value) {
+            const label = getLuckyTrinketLabel(value);
+            if (!label) return '';
+            return value === 'buyer' ? '他出首飾' : '我出首飾';
+        }
+
+        function updateLuckyTrinketButtons(value, buyerButton, sellerButton) {
+            const selectedClasses = ['bg-amber-400', 'border-orange-500', 'text-amber-950'];
+            const unselectedClasses = ['bg-white', 'border-gray-300', 'text-gray-500'];
+            [[buyerButton, 'buyer'], [sellerButton, 'seller']].forEach(([button, option]) => {
+                const isSelected = value === option;
+                button.setAttribute('aria-pressed', String(isSelected));
+                button.classList.remove(...(isSelected ? unselectedClasses : selectedClasses));
+                button.classList.add(...(isSelected ? selectedClasses : unselectedClasses));
+            });
+        }
+
+        function setLuckyTrinketSelection(value) {
+            selectedLuckyTrinket = normalizeLuckyTrinket(value);
+            updateLuckyTrinketButtons(selectedLuckyTrinket, luckyTrinketBuyerBtn, luckyTrinketSellerBtn);
+        }
+
+        function setEditingLuckyTrinketSelection(value) {
+            editingLuckyTrinket = normalizeLuckyTrinket(value);
+            updateLuckyTrinketButtons(editingLuckyTrinket, editLuckyTrinketBuyerBtn, editLuckyTrinketSellerBtn);
+        }
 
         // Helper: 獲取今日日期字串 YYYY-MM-DD
         function getTodayStr() {
@@ -445,6 +516,7 @@
                 listContainer.dataset.date = date;
 
                 groups[date].forEach(p => {
+                    const luckyTrinketLabel = getLuckyTrinketShortLabel(p.luckyTrinket);
                     const itemDiv = document.createElement('div');
                     itemDiv.className = "text-[11px] p-2 rounded-xl border-l-4 font-bold shadow-sm transition-transform bg-gray-50 border-orange-400 drag-item";
                     itemDiv.dataset.id = p.id;
@@ -458,6 +530,10 @@
                         <div class="flex justify-between items-center mt-0.5">
                             <span class="truncate pr-1 pointer-events-none text-gray-700">${formatInventoryCopyText(p)}➔${p.partner}</span>
                             <button onclick="copy('${p.partner}', this)" class="text-blue-500 shrink-0 px-2 py-1 -mr-2 bg-transparent relative z-10 pointer-events-auto" style="-webkit-touch-callout: default;">複製</button>
+                        </div>
+                        <div class="flex justify-between items-center mt-1 min-h-8">
+                            <span class="text-amber-700">${luckyTrinketLabel ? `✨ ${luckyTrinketLabel}` : ''}</span>
+                            <button type="button" onclick="openTradeEdit('${p.id}')" class="min-h-9 rounded-lg border border-orange-300 bg-orange-50 px-3 py-1 font-black text-orange-600 relative z-10 pointer-events-auto">編輯</button>
                         </div>
                     `;
                     listContainer.appendChild(itemDiv);
@@ -568,7 +644,19 @@
             selectedId = id; selectedAccName = accName;
             document.getElementById('targetAccLabel').innerText = `@${accName}`;
             document.getElementById('partnerInput').value = '';
+            setLuckyTrinketSelection(null);
             document.getElementById('tradeModal').classList.remove('hidden');
+        };
+
+        window.openTradeEdit = (id) => {
+            const item = pokemons.find(p => p.id === id);
+            if (!item || item.status !== 'trading') return;
+            editingTradeId = item.id;
+            editTradeAccountLabel.textContent = `@${item.account}`;
+            editTradePokemonLabel.textContent = formatInventoryCopyText(item);
+            editTradePartnerInput.value = item.partner || '';
+            setEditingLuckyTrinketSelection(item.luckyTrinket);
+            editTradeModal.classList.remove('hidden');
         };
 
         function setCompleteModalBusy(busy) {
@@ -645,9 +733,29 @@
             const partner = document.getElementById('partnerInput').value.trim();
             if (!partner) return alert("輸入買家");
             const autoDate = findNextAvailableDate(selectedAccName);
-            await updateDoc(doc(db, "inventory", selectedId), { status: 'trading', partner, tradeDate: autoDate });
+            await updateDoc(doc(db, "inventory", selectedId), { status: 'trading', partner, tradeDate: autoDate, luckyTrinket: selectedLuckyTrinket });
             document.getElementById('tradeModal').classList.add('hidden');
             clearSearch(); 
+        });
+
+        luckyTrinketBuyerBtn.addEventListener('click', () => setLuckyTrinketSelection(selectedLuckyTrinket === 'buyer' ? null : 'buyer'));
+        luckyTrinketSellerBtn.addEventListener('click', () => setLuckyTrinketSelection(selectedLuckyTrinket === 'seller' ? null : 'seller'));
+        editLuckyTrinketBuyerBtn.addEventListener('click', () => setEditingLuckyTrinketSelection(editingLuckyTrinket === 'buyer' ? null : 'buyer'));
+        editLuckyTrinketSellerBtn.addEventListener('click', () => setEditingLuckyTrinketSelection(editingLuckyTrinket === 'seller' ? null : 'seller'));
+        cancelEditTradeBtn.addEventListener('click', () => editTradeModal.classList.add('hidden'));
+        saveEditTradeBtn.addEventListener('click', async () => {
+            const partner = editTradePartnerInput.value.trim();
+            if (!partner) return alert("輸入買家");
+            const item = pokemons.find(p => p.id === editingTradeId);
+            if (!item || item.status !== 'trading') {
+                editTradeModal.classList.add('hidden');
+                return;
+            }
+            await updateDoc(doc(db, "inventory", editingTradeId), {
+                partner,
+                luckyTrinket: editingLuckyTrinket
+            });
+            editTradeModal.classList.add('hidden');
         });
 
         document.getElementById('saveAccountBtn').addEventListener('click', async () => {
@@ -769,8 +877,8 @@
                     actionIncludesDelete = true;
                     action = `<div class="flex flex-col items-start gap-1.5 shrink-0"><button onclick="restoreToStock('${p.id}')" class="bg-slate-600 text-white px-3 py-2 rounded-xl text-xs md:text-sm font-bold shadow-md active:scale-95 whitespace-nowrap min-w-[72px] shrink-0">恢復在庫</button><div class="flex items-center gap-1 md:gap-2"><div class="bg-green-500 text-white px-3 md:px-4 py-2 rounded-xl text-[10px] md:text-xs font-black min-w-[72px] text-center shrink-0">已完成</div><button onclick="deleteItem('${p.id}')" class="text-red-200 hover:text-red-400 p-2 text-lg leading-none">&times;</button></div></div>`;
                 }
-                
-                div.innerHTML = `<div class="flex flex-col flex-1 min-w-0 w-full md:pr-2"><div class="flex flex-col md:flex-row md:items-center gap-2 md:gap-2 mb-2 md:mb-1"><div class="flex flex-wrap items-center gap-1.5 md:gap-2">${tag}</div><div class="flex items-center gap-1 min-w-0 w-full md:w-auto"><span class="text-[9px] md:text-[10px] text-gray-400 font-mono truncate min-w-0">@${p.account}</span><button onclick="copy('${p.account}', this)" class="text-[9px] md:text-[10px] text-blue-400 font-bold shrink-0">複製</button></div></div>${inventoryMetadata ? `<span class="text-xs font-black text-purple-600 mb-0.5">${inventoryMetadata}</span>` : ''}<span class="text-base md:text-lg font-black text-gray-800 truncate w-full">${p.name}</span>${p.partner ? `<div class="flex items-center gap-2 mt-0.5 min-w-0"><span class="text-[10px] text-indigo-500 font-bold uppercase tracking-tighter truncate min-w-0">買家: ${p.partner}</span><button onclick="copy('${p.partner}', this)" class="text-[9px] text-indigo-400 font-bold shrink-0">複製</button></div>` : ''}</div><div class="flex items-center justify-end gap-1 md:gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0">${action}${actionIncludesDelete ? '' : `<button onclick="deleteItem('${p.id}')" class="text-red-200 hover:text-red-400 p-2 text-lg leading-none">&times;</button>`}</div>`;
+                const luckyTrinketLabel = p.status === 'trading' ? getLuckyTrinketLabel(p.luckyTrinket) : '';
+                div.innerHTML = `<div class="flex flex-col flex-1 min-w-0 w-full md:pr-2"><div class="flex flex-col md:flex-row md:items-center gap-2 md:gap-2 mb-2 md:mb-1"><div class="flex flex-wrap items-center gap-1.5 md:gap-2">${tag}</div><div class="flex items-center gap-1 min-w-0 w-full md:w-auto"><span class="text-[9px] md:text-[10px] text-gray-400 font-mono truncate min-w-0">@${p.account}</span><button onclick="copy('${p.account}', this)" class="text-[9px] md:text-[10px] text-blue-400 font-bold shrink-0">複製</button></div></div>${inventoryMetadata ? `<span class="text-xs font-black text-purple-600 mb-0.5">${inventoryMetadata}</span>` : ''}<span class="text-base md:text-lg font-black text-gray-800 truncate w-full">${p.name}</span>${p.partner ? `<div class="flex items-center gap-2 mt-0.5 min-w-0"><span class="text-[10px] text-indigo-500 font-bold uppercase tracking-tighter truncate min-w-0">買家: ${p.partner}</span><button onclick="copy('${p.partner}', this)" class="text-[9px] text-indigo-400 font-bold shrink-0">複製</button></div>` : ''}${luckyTrinketLabel ? `<span class="mt-1 text-[10px] font-bold text-amber-700">✨ ${luckyTrinketLabel}</span>` : ''}</div><div class="flex items-center justify-end gap-1 md:gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0">${action}${actionIncludesDelete ? '' : `<button onclick="deleteItem('${p.id}')" class="text-red-200 hover:text-red-400 p-2 text-lg leading-none">&times;</button>`}</div>`;
                 list.appendChild(div);
             });
         }
