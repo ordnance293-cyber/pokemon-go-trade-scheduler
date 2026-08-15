@@ -170,6 +170,57 @@
         </div>
     </div>
 
+    <div id="editStockModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-white p-5 md:p-6 rounded-3xl shadow-2xl w-full max-w-[360px]" role="dialog" aria-modal="true" aria-labelledby="editStockModalTitle">
+            <h2 id="editStockModalTitle" class="text-xl font-black text-gray-800 tracking-tight text-center">編輯現貨</h2>
+            <div class="mt-4 space-y-3">
+                <div>
+                    <label for="editStockAccountSelect" class="block mb-1 text-xs font-bold text-blue-600">帳號</label>
+                    <select id="editStockAccountSelect" class="border border-gray-200 bg-white p-3 rounded-xl w-full text-base"></select>
+                </div>
+                <div>
+                    <label for="editStockPokemonInput" class="block mb-1 text-xs font-bold text-blue-600">寶可夢名稱</label>
+                    <input type="text" id="editStockPokemonInput" class="border border-gray-200 bg-white p-3 rounded-xl w-full text-base">
+                </div>
+                <div>
+                    <label for="editStockYearSelect" class="block mb-1 text-xs font-bold text-blue-600">年份</label>
+                    <select id="editStockYearSelect" class="border border-gray-200 bg-white p-3 rounded-xl w-full text-base">
+                        <option value="2016">2016</option>
+                        <option value="2017">2017</option>
+                        <option value="2018">2018</option>
+                        <option value="2019">2019</option>
+                        <option value="2020">2020</option>
+                        <option value="2021">2021</option>
+                        <option value="2022">2022</option>
+                        <option value="2023">2023</option>
+                        <option value="2024">2024</option>
+                        <option value="2025">2025</option>
+                        <option value="2026">2026</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="editStockColorTypeSelect" class="block mb-1 text-xs font-bold text-blue-600">色違</label>
+                    <select id="editStockColorTypeSelect" class="border border-gray-200 bg-white p-3 rounded-xl w-full text-base">
+                        <option value="normal">普色</option>
+                        <option value="shiny">異色</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="editStockBackCardSelect" class="block mb-1 text-xs font-bold text-blue-600">背卡</label>
+                    <select id="editStockBackCardSelect" class="border border-gray-200 bg-white p-3 rounded-xl w-full text-base">
+                        <option value="none">無</option>
+                        <option value="special">特別背卡</option>
+                        <option value="commemorative">紀念背卡</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex gap-2 mt-5">
+                <button id="cancelEditStockBtn" type="button" class="min-h-11 flex-1 py-2 text-gray-400 font-bold text-sm">取消</button>
+                <button id="saveEditStockBtn" type="button" class="min-h-11 flex-[2] bg-blue-600 text-white py-2 rounded-2xl font-bold hover:bg-blue-700 active:scale-95 shadow-md text-sm transition-all">儲存修改</button>
+            </div>
+        </div>
+    </div>
+
     <div id="editTradeModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div class="bg-white p-6 rounded-3xl shadow-2xl w-full max-w-[320px] text-center" role="dialog" aria-modal="true" aria-labelledby="editTradeModalTitle">
             <h2 id="editTradeModalTitle" class="text-xl font-black text-gray-800 tracking-tight">編輯交換</h2>
@@ -238,6 +289,7 @@
 
         let currentTab = 'stock', pokemons = [], syncedPokemons = [], savedAccounts = [], selectedId = null, selectedAccName = null;
         let selectedLuckyTrinket = null;
+        let editingStockId = null;
         let editingTradeId = null;
         let editingLuckyTrinket = null;
         let currentCopyGroups = [];
@@ -261,6 +313,14 @@
         const editLuckyTrinketSellerBtn = document.getElementById('editLuckyTrinketSellerBtn');
         const cancelEditTradeBtn = document.getElementById('cancelEditTradeBtn');
         const saveEditTradeBtn = document.getElementById('saveEditTradeBtn');
+        const editStockModal = document.getElementById('editStockModal');
+        const editStockAccountSelect = document.getElementById('editStockAccountSelect');
+        const editStockPokemonInput = document.getElementById('editStockPokemonInput');
+        const editStockYearSelect = document.getElementById('editStockYearSelect');
+        const editStockColorTypeSelect = document.getElementById('editStockColorTypeSelect');
+        const editStockBackCardSelect = document.getElementById('editStockBackCardSelect');
+        const cancelEditStockBtn = document.getElementById('cancelEditStockBtn');
+        const saveEditStockBtn = document.getElementById('saveEditStockBtn');
         let pendingCompleteId = null;
         let isCompleting = false;
 
@@ -327,6 +387,21 @@
 
         function normalizeBackCardType(value) {
             return value === 'special' || value === 'commemorative' ? value : 'none';
+        }
+
+        function populateEditStockAccountSelect(currentAccount = '') {
+            editStockAccountSelect.innerHTML = '';
+            const accountNames = savedAccounts.map(account => account.name).filter(Boolean);
+            if (currentAccount && !accountNames.includes(currentAccount)) {
+                accountNames.unshift(currentAccount);
+            }
+            accountNames.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                editStockAccountSelect.appendChild(option);
+            });
+            editStockAccountSelect.value = currentAccount;
         }
 
         function formatInventoryMetadata(item) {
@@ -453,6 +528,7 @@
                 span.innerHTML = `${acc.name} <button onclick="deleteAccount('${acc.id}')" class="text-red-400">×</button>`;
                 tags.appendChild(span);
             });
+            if (editingStockId === null) populateEditStockAccountSelect();
         });
 
         function checkAndRescheduleOverdue() {
@@ -648,6 +724,18 @@
             document.getElementById('tradeModal').classList.remove('hidden');
         };
 
+        window.openStockEdit = (id) => {
+            const item = pokemons.find(p => p.id === id);
+            if (!item || item.status !== 'stock') return;
+            editingStockId = item.id;
+            populateEditStockAccountSelect(item.account || '');
+            editStockPokemonInput.value = item.name || '';
+            editStockYearSelect.value = String(normalizeInventoryYear(item.year) ?? 2026);
+            editStockColorTypeSelect.value = normalizeColorType(item.colorType);
+            editStockBackCardSelect.value = normalizeBackCardType(item.backCardType);
+            editStockModal.classList.remove('hidden');
+        };
+
         window.openTradeEdit = (id) => {
             const item = pokemons.find(p => p.id === id);
             if (!item || item.status !== 'trading') return;
@@ -758,6 +846,29 @@
             editTradeModal.classList.add('hidden');
         });
 
+        cancelEditStockBtn.addEventListener('click', () => editStockModal.classList.add('hidden'));
+        saveEditStockBtn.addEventListener('click', async () => {
+            const account = editStockAccountSelect.value;
+            const name = editStockPokemonInput.value.trim();
+            const year = normalizeInventoryYear(Number(editStockYearSelect.value));
+            const colorType = normalizeColorType(editStockColorTypeSelect.value);
+            const backCardType = normalizeBackCardType(editStockBackCardSelect.value);
+            if (!name) return alert("請填寫寶可夢名稱");
+            const item = pokemons.find(p => p.id === editingStockId);
+            if (!item || item.status !== 'stock') {
+                editStockModal.classList.add('hidden');
+                return;
+            }
+            await updateDoc(doc(db, "inventory", editingStockId), {
+                account,
+                name,
+                year,
+                colorType,
+                backCardType
+            });
+            editStockModal.classList.add('hidden');
+        });
+
         document.getElementById('saveAccountBtn').addEventListener('click', async () => {
             const name = document.getElementById('newAccountInput').value.trim();
             if (name) await addDoc(collection(db, "accounts"), { name, createdAt: Date.now() });
@@ -866,7 +977,7 @@
                     } else {
                         tag = `<div class="flex items-center gap-1.5"><span class="text-blue-500 text-[9px] md:text-[10px] font-black bg-blue-50 px-2 py-0.5 rounded border border-blue-100 shrink-0">在庫</span><span class="text-purple-600 text-[9px] md:text-[10px] font-black bg-purple-50 px-2 py-0.5 rounded border border-purple-200 shrink-0">可排: ${p.nextDateStr}</span></div>`;
                     }
-                    action = `<button onclick="openTrade('${p.id}', '${p.account}')" class="bg-orange-500 text-white px-4 md:px-5 py-2 rounded-xl text-xs md:text-sm font-bold shadow-md shrink-0">安排</button>`;
+                    action = `<button type="button" onclick="openStockEdit('${p.id}')" class="min-h-11 bg-slate-600 text-white px-4 py-2 rounded-xl text-xs md:text-sm font-bold shadow-md active:scale-95 shrink-0">編輯</button><button onclick="openTrade('${p.id}', '${p.account}')" class="bg-orange-500 text-white px-4 md:px-5 py-2 rounded-xl text-xs md:text-sm font-bold shadow-md shrink-0">安排</button>`;
                 } else if (p.status === 'trading') {
                     tag = `<span class="text-orange-600 text-[9px] md:text-[10px] font-black bg-orange-50 px-2 py-0.5 rounded border border-orange-200 shrink-0">${p.tradeDate} 待交換</span>`;
                     actionIncludesDelete = true;
