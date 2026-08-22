@@ -547,13 +547,17 @@
             return groups.filter(group => !isValidStockCopyPrice(priceMap.get(group.priceKey)));
         }
 
-        function getCopyPriceBatchResult(targets, text) {
+        function getCopyPriceBatchResult(targets, text, requireExactCount = false) {
+            if (!text.trim()) return { ok: false, message: '請至少輸入 1 個價格' };
             const prices = parseCopyPrices(text);
             if (!prices) return { ok: false, message: '價格格式錯誤，請輸入正整數並以空格、逗號或換行分隔' };
-            if (prices.length !== targets.length) {
+            if (requireExactCount && prices.length !== targets.length) {
                 return { ok: false, message: `需要 ${targets.length} 個價格，目前${prices.length < targets.length ? '只有' : '有'} ${prices.length} 個` };
             }
-            return { ok: true, entries: targets.map((group, index) => ({ group, price: prices[index] })) };
+            if (prices.length > targets.length) {
+                return { ok: false, message: `尚未設定價格只有 ${targets.length} 項，目前輸入 ${prices.length} 個` };
+            }
+            return { ok: true, entries: targets.slice(0, prices.length).map((group, index) => ({ group, price: prices[index] })) };
         }
 
         function getAllCopyPriceEditState(groups, priceMap) {
@@ -1361,7 +1365,7 @@
             const targets = editingAllCopyPrices
                 ? currentCopyGroups
                 : getMissingCopyPriceTargets(currentCopyGroups, stockCopyPriceMap);
-            const result = getCopyPriceBatchResult(targets, copyPriceInput.value);
+            const result = getCopyPriceBatchResult(targets, copyPriceInput.value, editingAllCopyPrices);
             const message = document.getElementById('copyPriceMessage');
             message.textContent = result.ok ? '' : result.message;
             message.classList.toggle('text-red-600', !result.ok);
