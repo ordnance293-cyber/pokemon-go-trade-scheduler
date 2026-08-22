@@ -305,13 +305,14 @@ test('empty stock rejects prices and keeps the empty stock copy', () => {
     );
 });
 
-test('copy price controls are modal-only and do not write inventory data', () => {
+test('copy price controls persist only to the dedicated pricing collection', () => {
     assert.match(html, /id="copyPriceInput"[^>]*inputmode="numeric"/);
     assert.match(html, /id="insertPriceSeparatorBtn"[^>]*type="button"[^>]*>\s*,\s*<\/button>/);
-    assert.match(html, /id="applyCopyPricesBtn"[^>]*>套用價格<\/button>/);
+    assert.match(html, /id="applyCopyPricesBtn"[^>]*>批次儲存價格<\/button>/);
     const priceHandler = moduleScript.slice(moduleScript.indexOf("document.getElementById('applyCopyPricesBtn').addEventListener"), moduleScript.indexOf("document.getElementById('closeCopyModalBtn')"));
-    assert.doesNotMatch(priceHandler, /addDoc|setDoc|updateDoc|localStorage|price\s*:/);
-    assert.match(priceHandler, /if \(result\.ok\) document\.getElementById\('copyTextarea'\)\.value = result\.text/);
+    assert.match(priceHandler, /writeBatch\(db\)/);
+    assert.match(priceHandler, /doc\(db, "stockCopyPrices", encodeURIComponent\(group\.priceKey\)\)/);
+    assert.doesNotMatch(priceHandler, /doc\(db, "inventory"|localStorage/);
 });
 
 test('price separator inserts at the caret, replaces selections, and restores focus', () => {
