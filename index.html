@@ -317,6 +317,10 @@
             return value === 'buyer' || value === 'seller' ? value : null;
         }
 
+        function getLuckyTrinketAccountDisplayName(account) {
+            return String(account || '').slice(0, 6);
+        }
+
         function getLuckyTrinketAccountRows(accounts, inventoryItems) {
             const seenNames = new Set();
             const rows = [];
@@ -325,15 +329,15 @@
                 const name = account?.name;
                 if (typeof name !== 'string' || name === '' || seenNames.has(name)) return;
                 seenNames.add(name);
-                const unavailable = inventoryItems.some(item =>
+                const hasTrinket = !inventoryItems.some(item =>
                     item?.account === name && normalizeLuckyTrinket(item?.luckyTrinket) === 'seller'
                 );
-                rows.push({ name, unavailable });
+                rows.push({ account: name, hasTrinket });
             });
 
             return [
-                ...rows.filter(row => row.unavailable),
-                ...rows.filter(row => !row.unavailable)
+                ...rows.filter(row => !row.hasTrinket),
+                ...rows.filter(row => row.hasTrinket)
             ];
         }
 
@@ -341,14 +345,14 @@
             const list = document.getElementById('luckyTrinketAccountList');
             list.replaceChildren();
 
-            getLuckyTrinketAccountRows(savedAccounts, pokemons).forEach(({ name, unavailable }) => {
+            getLuckyTrinketAccountRows(savedAccounts, pokemons).forEach(({ account, hasTrinket }) => {
                 const row = document.createElement('tr');
                 const accountCell = document.createElement('td');
                 const statusCell = document.createElement('td');
                 accountCell.className = 'break-all px-4 py-3 font-mono font-bold text-gray-800';
                 statusCell.className = 'px-4 py-3 font-bold';
-                accountCell.textContent = name;
-                statusCell.textContent = unavailable ? '🔴 無' : '🟢 有';
+                accountCell.textContent = getLuckyTrinketAccountDisplayName(account);
+                statusCell.textContent = hasTrinket ? '🟢 有首飾' : '🔴 無首飾';
                 row.append(accountCell, statusCell);
                 list.appendChild(row);
             });

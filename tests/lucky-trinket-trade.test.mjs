@@ -57,9 +57,19 @@ test('Lucky Trinket viewer contains only account and availability columns', () =
     assert.doesNotMatch(accountViewer, /買家|buyer|寶可夢|tradeDate|交易日期|完成日期|completedAt|待交換|已完成|在庫|seller|紀錄|重複|警告|筆數|切換|button/i);
 
     const renderer = extractFunction('renderLuckyTrinketAccounts');
-    assert.match(renderer, /accountCell\.textContent = name/);
-    assert.match(renderer, /statusCell\.textContent = unavailable \? '🔴 無' : '🟢 有'/);
+    assert.match(renderer, /accountCell\.textContent = getLuckyTrinketAccountDisplayName\(account\)/);
+    assert.match(renderer, /statusCell\.textContent = hasTrinket \? '🟢 有首飾' : '🔴 無首飾'/);
+    assert.doesNotMatch(renderer, /accountCell\.textContent = account/);
     assert.doesNotMatch(renderer, /innerHTML|updateDoc|setDoc|addDoc|deleteDoc|transaction|partner|tradeDate|completedAt|\.name\b(?!\s*;)/i);
+});
+
+test('Lucky Trinket account display names contain at most the first six characters', () => {
+    const displayNameSource = extractFunction('getLuckyTrinketAccountDisplayName');
+    const getDisplayName = Function(`${displayNameSource}; return getLuckyTrinketAccountDisplayName;`)();
+
+    assert.equal(getDisplayName('tu696218ub;Bestpoke27@'), 'tu6962');
+    assert.equal(getDisplayName('khang562570qw;Bestpoke27@'), 'khang5');
+    assert.equal(getDisplayName('abc'), 'abc');
 });
 
 test('account availability uses exact full names, all statuses, and seller trinkets only', () => {
@@ -67,23 +77,22 @@ test('account availability uses exact full names, all statuses, and seller trink
     const rowsSource = extractFunction('getLuckyTrinketAccountRows');
     const getRows = Function(`${normalizeSource}; ${rowsSource}; return getLuckyTrinketAccountRows;`)();
     const accounts = [
-        { name: 'khang5xxxxxx' },
-        { name: 'chuc02xxxxxx' },
-        { name: 'khang5yyyyyy' },
-        { name: 'khang5xxxxxx' },
-        { name: 'free-account' }
+        { name: 'abcdef111111' },
+        { name: 'abcdef222222' },
+        { name: 'accountA' },
+        { name: 'accountB' },
+        { name: 'accountA' }
     ];
     const inventory = [
-        { account: 'chuc02xxxxxx', status: 'trading', luckyTrinket: 'seller' },
-        { account: 'khang5xxxxxx', status: 'done', luckyTrinket: 'buyer' },
-        { account: 'khang5yyyyyy', status: 'legacy-status', luckyTrinket: 'seller' },
-        { account: 'free-account', status: 'stock', luckyTrinket: 'invalid' }
+        { account: 'abcdef111111', status: 'legacy-status', luckyTrinket: 'seller' },
+        { account: 'accountA', status: 'trading', luckyTrinket: 'seller' },
+        { account: 'accountB', status: 'trading', luckyTrinket: 'buyer' }
     ];
 
     assert.deepEqual(getRows(accounts, inventory), [
-        { name: 'chuc02xxxxxx', unavailable: true },
-        { name: 'khang5yyyyyy', unavailable: true },
-        { name: 'khang5xxxxxx', unavailable: false },
-        { name: 'free-account', unavailable: false }
+        { account: 'abcdef111111', hasTrinket: false },
+        { account: 'accountA', hasTrinket: false },
+        { account: 'abcdef222222', hasTrinket: true },
+        { account: 'accountB', hasTrinket: true }
     ]);
 });
