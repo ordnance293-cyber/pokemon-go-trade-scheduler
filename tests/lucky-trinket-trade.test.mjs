@@ -74,8 +74,9 @@ test('Lucky Trinket account display names contain at most the first six characte
 
 test('account availability uses exact full names, all statuses, and seller trinkets only', () => {
     const normalizeSource = extractFunction('normalizeLuckyTrinket');
+    const availabilitySource = extractFunction('accountHasLuckyTrinket');
     const rowsSource = extractFunction('getLuckyTrinketAccountRows');
-    const getRows = Function(`${normalizeSource}; ${rowsSource}; return getLuckyTrinketAccountRows;`)();
+    const getRows = Function(`${normalizeSource}; ${availabilitySource}; ${rowsSource}; return getLuckyTrinketAccountRows;`)();
     const accounts = [
         { name: 'abcdef111111' },
         { name: 'abcdef222222' },
@@ -95,4 +96,19 @@ test('account availability uses exact full names, all statuses, and seller trink
         { account: 'abcdef222222', hasTrinket: true },
         { account: 'accountB', hasTrinket: true }
     ]);
+});
+
+test('shared account availability helper is safe for viewer and stock-copy reuse', () => {
+    const normalizeSource = extractFunction('normalizeLuckyTrinket');
+    const availabilitySource = extractFunction('accountHasLuckyTrinket');
+    const accountHasLuckyTrinket = Function(`${normalizeSource}; ${availabilitySource}; return accountHasLuckyTrinket;`)();
+    const items = [
+        { account: 'seller-account', status: 'done', luckyTrinket: 'seller' },
+        { account: 'buyer-account', status: 'trading', luckyTrinket: 'buyer' },
+        { account: 'invalid-account', status: 'legacy', luckyTrinket: 'unknown' }
+    ];
+    assert.equal(accountHasLuckyTrinket('seller-account', items), false);
+    assert.equal(accountHasLuckyTrinket('buyer-account', items), true);
+    assert.equal(accountHasLuckyTrinket('invalid-account', items), true);
+    assert.equal(accountHasLuckyTrinket('seller', items), true, 'matching must use the exact full account');
 });

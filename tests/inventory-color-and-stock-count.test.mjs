@@ -24,7 +24,7 @@ function functionSource(name) {
 }
 
 function loadHelpers() {
-    const names = ['normalizeColorType', 'normalizeBackCardType', 'formatInventoryMetadata', 'formatInventoryCopyText', 'getInventoryGroupingKey', 'getStockInventoryCount', 'parseCopyPrices', 'buildStockCopyLines', 'getStockCopyPreamble', 'buildFullStockCopyText', 'getCopyPriceResult', 'insertPriceSeparator'];
+    const names = ['normalizeLuckyTrinket', 'accountHasLuckyTrinket', 'getLuckyTrinketAccountDisplayName', 'buildStockCopyAccountHeader', 'normalizeColorType', 'normalizeBackCardType', 'formatInventoryMetadata', 'formatInventoryCopyText', 'getInventoryGroupingKey', 'getStockInventoryCount', 'parseCopyPrices', 'buildStockCopyLines', 'getStockCopyPreamble', 'buildFullStockCopyText', 'getCopyPriceResult', 'insertPriceSeparator'];
     const source = names.map(functionSource).join('\n');
     return vm.runInNewContext(`(() => { ${source}; return { ${names.join(',')} }; })()`);
 }
@@ -141,14 +141,14 @@ test('full stock copy adds one preamble and exactly one blank line before the bo
 test('priced stock remains body-only and full copy wraps it once when prices are reapplied', () => {
     const { getCopyPriceResult, buildFullStockCopyText } = loadHelpers();
     const groups = [{ account: 'abcdef123456', label: '寶可夢文案', quantity: 1 }];
-    const first = getCopyPriceResult(groups, '450').text;
-    assert.equal(first, '【abcdef】\n🔥 寶可夢文案｜1隻450元');
+    const first = getCopyPriceResult(groups, '450', groups).text;
+    assert.equal(first, '【abcdef｜🟢 有首飾】\n🔥 寶可夢文案｜1隻450元');
     assert.doesNotMatch(first, /出售一些/);
     assert.equal(
         buildFullStockCopyText(first),
-        '出售一些色違裝扮,背卡寶可夢\n\n⚠️ 注意事項\n✨ 首飾 +200\n✨ 亮晶晶寶可夢 +50\n付款方式 ✅Linepay ✅8591實收\n\n【abcdef】\n🔥 寶可夢文案｜1隻450元'
+        '出售一些色違裝扮,背卡寶可夢\n\n⚠️ 注意事項\n✨ 首飾 +200\n✨ 亮晶晶寶可夢 +50\n付款方式 ✅Linepay ✅8591實收\n\n【abcdef｜🟢 有首飾】\n🔥 寶可夢文案｜1隻450元'
     );
-    const reapplied = buildFullStockCopyText(getCopyPriceResult(groups, '500').text);
+    const reapplied = buildFullStockCopyText(getCopyPriceResult(groups, '500', groups).text);
     assert.equal(reapplied.match(/出售一些色違裝扮,背卡寶可夢/g)?.length, 1);
     assert.match(reapplied, /🔥 寶可夢文案｜1隻500元$/);
 });
@@ -179,7 +179,7 @@ test('stock copy grouping key keeps full accounts separate when the displayed pr
     );
 });
 
-test('stock copy groups by full account and displays only each account first six characters', () => {
+test('stock copy headers use full-history trinket status and display exact six-character format', () => {
     const { buildStockCopyLines } = loadHelpers();
     const groups = [
         { account: 'abcdef111111', label: '異色皮卡丘', quantity: 2 },
@@ -187,10 +187,15 @@ test('stock copy groups by full account and displays only each account first six
         { account: 'abcdef111111', label: '異色烈空坐', quantity: 1 },
         { account: 'abcdef222222', label: '異色超夢', quantity: 1 }
     ];
-    const result = buildStockCopyLines(groups);
+    const inventory = [
+        ...groups.map(group => ({ ...group, status: 'stock' })),
+        { account: 'xyz789654321', status: 'trading', luckyTrinket: 'seller' },
+        { account: 'abcdef111111', status: 'trading', luckyTrinket: 'buyer' }
+    ];
+    const result = buildStockCopyLines(groups, null, inventory);
     assert.equal(
         result,
-        '【abcdef】\n🔥 異色皮卡丘（現貨2隻）\n🔥 異色烈空坐\n\n【xyz789】\n🔥 異色夢幻\n\n【abcdef】\n🔥 異色超夢'
+        '【abcdef｜🟢 有首飾】\n🔥 異色皮卡丘（現貨2隻）\n🔥 異色烈空坐\n\n【xyz789｜🔴 無首飾】\n🔥 異色夢幻\n\n【abcdef｜🟢 有首飾】\n🔥 異色超夢'
     );
     assert.doesNotMatch(result, /abcdef111111|abcdef222222|xyz789654321/);
 
@@ -209,12 +214,43 @@ test('account-grouped prices follow displayed Pokemon lines rather than account 
         { account: 'abcdef111111', label: '異色烈空坐', quantity: 1 }
     ];
     assert.equal(
-        getCopyPriceResult(groups, '150 300 200').text,
-        '【abcdef】\n🔥 異色皮卡丘｜1隻150元\n🔥 異色烈空坐｜1隻300元\n\n【xyz789】\n🔥 異色夢幻｜1隻200元'
+        getCopyPriceResult(groups, '150 300 200', [{ account: 'xyz789654321', status: 'done', luckyTrinket: 'seller' }]).text,
+        '【abcdef｜🟢 有首飾】\n🔥 異色皮卡丘｜1隻150元\n🔥 異色烈空坐｜1隻300元\n\n【xyz789｜🔴 無首飾】\n🔥 異色夢幻｜1隻200元'
     );
     assert.deepEqual(
         { ...getCopyPriceResult(groups, '150 300') },
         { ok: false, message: '需要 3 個價格，目前只有 2 個' }
+    );
+});
+
+test('stock copy includes stock accounts only while full history controls availability', () => {
+    const { buildStockCopyLines } = loadHelpers();
+    const stockGroups = [
+        { account: 'dfVYS8H0Gp9o2Xi7;Bestmoonvn@2024', label: '異色蓋歐卡', quantity: 1 },
+        { account: 'vet085608gg;Bestpoke27@', label: '異色皮卡丘', quantity: 1 }
+    ];
+    const allItems = [
+        ...stockGroups.map(group => ({ ...group, status: 'stock' })),
+        { account: stockGroups[0].account, status: 'trading', luckyTrinket: 'buyer' },
+        { account: stockGroups[1].account, status: 'trading', luckyTrinket: 'seller' },
+        { account: 'savedOnly123', status: 'done', luckyTrinket: 'seller' }
+    ];
+    const result = buildStockCopyLines(stockGroups, null, allItems);
+    assert.equal(result, '【dfVYS8｜🟢 有首飾】\n🔥 異色蓋歐卡\n\n【vet085｜🔴 無首飾】\n🔥 異色皮卡丘');
+    assert.doesNotMatch(result, /savedOnly/);
+    assert.doesNotMatch(result, /\(|\)|\||dfVYS8H0Gp9o2Xi7|vet085608gg/);
+});
+
+test('stock copy preserves chronological group and account-section order with status headers', () => {
+    const { buildStockCopyLines } = loadHelpers();
+    const chronologicallyGroupedStock = [
+        { account: 'olderA123', label: '最早加入', quantity: 1 },
+        { account: 'olderA123', label: '同帳號稍晚加入', quantity: 1 },
+        { account: 'newerB456', label: '較晚帳號', quantity: 1 }
+    ];
+    assert.equal(
+        buildStockCopyLines(chronologicallyGroupedStock, null, chronologicallyGroupedStock),
+        '【olderA｜🟢 有首飾】\n🔥 最早加入\n🔥 同帳號稍晚加入\n\n【newerB｜🟢 有首飾】\n🔥 較晚帳號'
     );
 });
 
