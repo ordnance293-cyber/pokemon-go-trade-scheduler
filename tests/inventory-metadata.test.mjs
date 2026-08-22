@@ -23,7 +23,6 @@ function optionValues(markup) {
 
 function loadMetadataHelpers() {
     const names = [
-        'normalizeInventoryYear',
         'normalizeColorType',
         'normalizeBackCardType',
         'formatInventoryMetadata',
@@ -38,32 +37,25 @@ function loadMetadataHelpers() {
     return vm.runInNewContext(`(() => { ${declarations}; return { ${names.join(',')} }; })()`);
 }
 
-test('year and back-card selectors have the exact option and default contracts', () => {
-    const year = selectMarkup('yearSelect');
-    assert.match(html, /<label[^>]*>年份<\/label>/);
-    assert.deepEqual(
-        optionValues(year.options),
-        Array.from({ length: 11 }, (_, index) => {
-            const value = String(2016 + index);
-            return { value, label: value };
-        })
-    );
-    assert.match(year.options, /<option value="2026" selected>2026<\/option>/);
-
+test('year control is absent and back-card selector has the exact option and default contract', () => {
+    assert.doesNotMatch(html, /id="yearSelect"/);
+    const addForm = html.slice(html.indexOf('<h2 class="text-lg md:text-xl font-bold text-gray-800">新增庫存</h2>'), html.indexOf('<div class="glass-panel p-5 md:p-6 rounded-3xl shadow-2xl border-t-8'));
+    assert.doesNotMatch(addForm, />年份<\/label>/);
     const backCard = selectMarkup('backCardSelect');
     assert.match(html, /<label[^>]*>背卡<\/label>/);
     assert.deepEqual(optionValues(backCard.options), [
         { value: 'none', label: '無' },
         { value: 'special', label: '特別背卡' },
-        { value: 'commemorative', label: '紀念背卡' }
+        { value: 'commemorative', label: '紀念背卡' },
+        { value: 'costume', label: '裝扮' }
     ]);
     assert.match(backCard.options, /<option value="none" selected>無<\/option>/);
 });
 
-test('new inventory records persist metadata with all existing fields', () => {
-    assert.match(moduleScript, /const year = Number\(document\.getElementById\('yearSelect'\)\.value\)/);
+test('new inventory records omit year while persisting the remaining metadata', () => {
+    assert.doesNotMatch(moduleScript, /yearSelect/);
     assert.match(moduleScript, /const backCardType = document\.getElementById\('backCardSelect'\)\.value/);
-    assert.match(moduleScript, /\{ account: acc, name, year, colorType, backCardType, quantity: 1, status: 'stock', partner: '', tradeDate: '', createdAt:/);
+    assert.match(moduleScript, /\{ account: acc, name, colorType, backCardType, quantity: 1, status: 'stock', partner: '', tradeDate: '', createdAt:/);
 });
 
 test('successful add keeps account and resets all other inventory controls', () => {
@@ -72,34 +64,36 @@ test('successful add keeps account and resets all other inventory controls', () 
     assert.doesNotMatch(handler[1], /accountSelect'\)\.value\s*=/);
     assert.match(handler[1], /pokemonInput'\)\.value = ''/);
     assert.match(handler[1], /quantityInput'\)\.value = '1'/);
-    assert.match(handler[1], /yearSelect'\)\.value = '2026'/);
+    assert.doesNotMatch(handler[1], /yearSelect/);
     assert.match(handler[1], /backCardSelect'\)\.value = 'none'/);
     assert.match(handler[1], /colorTypeSelect'\)\.value = 'shiny'/);
 });
 
 test('metadata helpers format copy without whitespace and keep groups independent', () => {
     const helpers = loadMetadataHelpers();
-    assert.equal(helpers.formatInventoryCopyText({ year: 2026, backCardType: 'none', name: '烈空坐' }), '26年烈空坐');
-    assert.equal(helpers.formatInventoryCopyText({ year: 2026, backCardType: 'special', name: '烈空坐' }), '26年特別背卡烈空坐');
-    assert.equal(helpers.formatInventoryCopyText({ year: 2026, backCardType: 'commemorative', name: '烈空坐' }), '26年紀念背卡烈空坐');
+    assert.equal(helpers.normalizeBackCardType('costume'), 'costume');
+    assert.equal(helpers.formatInventoryCopyText({ year: 2026, backCardType: 'none', name: '烈空坐' }), '烈空坐');
+    assert.equal(helpers.formatInventoryCopyText({ year: 2026, backCardType: 'special', name: '烈空坐' }), '特別背卡烈空坐');
+    assert.equal(helpers.formatInventoryCopyText({ year: 2026, backCardType: 'commemorative', name: '烈空坐' }), '紀念背卡烈空坐');
+    assert.equal(helpers.formatInventoryCopyText({ year: 2025, colorType: 'shiny', backCardType: 'costume', name: '皮卡丘' }), '異色裝扮皮卡丘');
 
     const keys = [
         { year: 2025, backCardType: 'special', name: '烈空坐' },
         { year: 2026, backCardType: 'special', name: '烈空坐' },
         { year: 2026, backCardType: 'commemorative', name: '烈空坐' }
     ].map(helpers.getInventoryGroupingKey);
-    assert.equal(new Set(keys).size, 3);
+    assert.equal(keys[0], keys[1]);
+    assert.notEqual(keys[1], keys[2]);
 });
 
 test('legacy records render and copy without invented or broken metadata', () => {
     const helpers = loadMetadataHelpers();
     const legacy = { name: '超夢', status: 'stock' };
-    assert.equal(helpers.normalizeInventoryYear(legacy.year), null);
     assert.equal(helpers.normalizeBackCardType(legacy.backCardType), 'none');
     assert.equal(helpers.formatInventoryMetadata(legacy), '普色');
     assert.equal(helpers.formatInventoryCopyText(legacy), '超夢');
     assert.doesNotMatch(helpers.formatInventoryCopyText(legacy), /undefined|2026|26年/);
-    assert.notEqual(
+    assert.equal(
         helpers.getInventoryGroupingKey(legacy),
         helpers.getInventoryGroupingKey({ ...legacy, year: 2026 })
     );

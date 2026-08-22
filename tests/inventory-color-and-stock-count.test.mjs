@@ -24,7 +24,7 @@ function functionSource(name) {
 }
 
 function loadHelpers() {
-    const names = ['normalizeInventoryYear', 'normalizeColorType', 'normalizeBackCardType', 'formatInventoryMetadata', 'formatInventoryCopyText', 'getInventoryGroupingKey', 'getStockInventoryCount', 'parseCopyPrices', 'buildStockCopyLines', 'getStockCopyPreamble', 'buildFullStockCopyText', 'getCopyPriceResult', 'insertPriceSeparator'];
+    const names = ['normalizeColorType', 'normalizeBackCardType', 'formatInventoryMetadata', 'formatInventoryCopyText', 'getInventoryGroupingKey', 'getStockInventoryCount', 'parseCopyPrices', 'buildStockCopyLines', 'getStockCopyPreamble', 'buildFullStockCopyText', 'getCopyPriceResult', 'insertPriceSeparator'];
     const source = names.map(functionSource).join('\n');
     return vm.runInNewContext(`(() => { ${source}; return { ${names.join(',')} }; })()`);
 }
@@ -58,21 +58,22 @@ test('color normalization defaults unknown and legacy values to normal', () => {
     assert.equal(normalizeColorType('unknown'), 'normal');
 });
 
-test('metadata includes year, color, then back-card and supports legacy records', () => {
+test('metadata ignores year and includes color then back-card while supporting legacy records', () => {
     const { formatInventoryMetadata } = loadHelpers();
-    assert.equal(formatInventoryMetadata({ year: 2026, colorType: 'normal', backCardType: 'none' }), '26年 | 普色');
-    assert.equal(formatInventoryMetadata({ year: 2026, colorType: 'shiny', backCardType: 'special' }), '26年 | 異色 | 特別背卡');
-    assert.equal(formatInventoryMetadata({ year: 2026, colorType: 'shiny', backCardType: 'commemorative' }), '26年 | 異色 | 紀念背卡');
+    assert.equal(formatInventoryMetadata({ year: 2026, colorType: 'normal', backCardType: 'none' }), '普色');
+    assert.equal(formatInventoryMetadata({ year: 2026, colorType: 'shiny', backCardType: 'special' }), '異色 | 特別背卡');
+    assert.equal(formatInventoryMetadata({ year: 2026, colorType: 'shiny', backCardType: 'commemorative' }), '異色 | 紀念背卡');
     assert.equal(formatInventoryMetadata({ name: '超夢' }), '普色');
 });
 
-test('copy puts shiny after year and before back-card while normal and legacy stay clean', () => {
+test('copy ignores year and puts shiny before back-card while normal and legacy stay clean', () => {
     const { formatInventoryCopyText } = loadHelpers();
-    assert.equal(formatInventoryCopyText({ year: 2026, colorType: 'normal', backCardType: 'none', name: '烈空坐' }), '26年烈空坐');
-    assert.equal(formatInventoryCopyText({ year: 2026, colorType: 'normal', backCardType: 'special', name: '烈空坐' }), '26年特別背卡烈空坐');
-    assert.equal(formatInventoryCopyText({ year: 2026, colorType: 'shiny', backCardType: 'none', name: '烈空坐' }), '26年異色烈空坐');
-    assert.equal(formatInventoryCopyText({ year: 2026, colorType: 'shiny', backCardType: 'special', name: '烈空坐' }), '26年異色特別背卡烈空坐');
-    assert.equal(formatInventoryCopyText({ year: 2026, colorType: 'shiny', backCardType: 'commemorative', name: '烈空坐' }), '26年異色紀念背卡烈空坐');
+    assert.equal(formatInventoryCopyText({ year: 2026, colorType: 'normal', backCardType: 'none', name: '烈空坐' }), '烈空坐');
+    assert.equal(formatInventoryCopyText({ year: 2026, colorType: 'normal', backCardType: 'special', name: '烈空坐' }), '特別背卡烈空坐');
+    assert.equal(formatInventoryCopyText({ year: 2026, colorType: 'shiny', backCardType: 'none', name: '烈空坐' }), '異色烈空坐');
+    assert.equal(formatInventoryCopyText({ year: 2026, colorType: 'shiny', backCardType: 'special', name: '烈空坐' }), '異色特別背卡烈空坐');
+    assert.equal(formatInventoryCopyText({ year: 2026, colorType: 'shiny', backCardType: 'commemorative', name: '烈空坐' }), '異色紀念背卡烈空坐');
+    assert.equal(formatInventoryCopyText({ year: 2025, colorType: 'shiny', backCardType: 'costume', name: '皮卡丘' }), '異色裝扮皮卡丘');
     const legacy = formatInventoryCopyText({ name: '超夢' });
     assert.equal(legacy, '超夢');
     assert.doesNotMatch(legacy, /普色|異色|2026|26年|undefined/);
@@ -181,15 +182,15 @@ test('stock copy grouping key keeps full accounts separate when the displayed pr
 test('stock copy groups by full account and displays only each account first six characters', () => {
     const { buildStockCopyLines } = loadHelpers();
     const groups = [
-        { account: 'abcdef111111', label: '26年異色皮卡丘', quantity: 2 },
-        { account: 'xyz789654321', label: '26年異色夢幻', quantity: 1 },
-        { account: 'abcdef111111', label: '26年異色烈空坐', quantity: 1 },
-        { account: 'abcdef222222', label: '26年異色超夢', quantity: 1 }
+        { account: 'abcdef111111', label: '異色皮卡丘', quantity: 2 },
+        { account: 'xyz789654321', label: '異色夢幻', quantity: 1 },
+        { account: 'abcdef111111', label: '異色烈空坐', quantity: 1 },
+        { account: 'abcdef222222', label: '異色超夢', quantity: 1 }
     ];
     const result = buildStockCopyLines(groups);
     assert.equal(
         result,
-        '【abcdef】\n🔥 26年異色皮卡丘（現貨2隻）\n🔥 26年異色烈空坐\n\n【xyz789】\n🔥 26年異色夢幻\n\n【abcdef】\n🔥 26年異色超夢'
+        '【abcdef】\n🔥 異色皮卡丘（現貨2隻）\n🔥 異色烈空坐\n\n【xyz789】\n🔥 異色夢幻\n\n【abcdef】\n🔥 異色超夢'
     );
     assert.doesNotMatch(result, /abcdef111111|abcdef222222|xyz789654321/);
 
@@ -203,13 +204,13 @@ test('stock copy groups by full account and displays only each account first six
 test('account-grouped prices follow displayed Pokemon lines rather than account sections', () => {
     const { getCopyPriceResult } = loadHelpers();
     const groups = [
-        { account: 'abcdef111111', label: '26年異色皮卡丘', quantity: 1 },
-        { account: 'xyz789654321', label: '26年異色夢幻', quantity: 1 },
-        { account: 'abcdef111111', label: '26年異色烈空坐', quantity: 1 }
+        { account: 'abcdef111111', label: '異色皮卡丘', quantity: 1 },
+        { account: 'xyz789654321', label: '異色夢幻', quantity: 1 },
+        { account: 'abcdef111111', label: '異色烈空坐', quantity: 1 }
     ];
     assert.equal(
         getCopyPriceResult(groups, '150 300 200').text,
-        '【abcdef】\n🔥 26年異色皮卡丘｜1隻150元\n🔥 26年異色烈空坐｜1隻300元\n\n【xyz789】\n🔥 26年異色夢幻｜1隻200元'
+        '【abcdef】\n🔥 異色皮卡丘｜1隻150元\n🔥 異色烈空坐｜1隻300元\n\n【xyz789】\n🔥 異色夢幻｜1隻200元'
     );
     assert.deepEqual(
         { ...getCopyPriceResult(groups, '150 300') },

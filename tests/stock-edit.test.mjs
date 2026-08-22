@@ -26,18 +26,18 @@ test('stock cards alone expose touch-friendly Edit beside Arrange', () => {
 });
 
 test('dedicated stock modal has only focused inventory controls', () => {
-    for (const id of ['editStockModal', 'editStockAccountSelect', 'editStockPokemonInput', 'editStockYearSelect', 'editStockColorTypeSelect', 'editStockBackCardSelect', 'cancelEditStockBtn', 'saveEditStockBtn']) {
+    for (const id of ['editStockModal', 'editStockAccountSelect', 'editStockPokemonInput', 'editStockColorTypeSelect', 'editStockBackCardSelect', 'cancelEditStockBtn', 'saveEditStockBtn']) {
         assert.match(stockModal, new RegExp(`id="${id}"`));
     }
+    assert.doesNotMatch(stockModal, /editStockYearSelect|>年份<\/label>/);
     assert.doesNotMatch(stockModal, /quantity|tradeDate|partner|luckyTrinket/i);
     assert.match(stockModal, /id="cancelEditStockBtn" type="button"/);
     assert.match(stockModal, /id="saveEditStockBtn" type="button"/);
 });
 
 test('stock edit selectors reuse canonical schemas', () => {
-    assert.deepEqual(valuesFor('editStockYearSelect'), Array.from({ length: 11 }, (_, index) => String(2016 + index)));
     assert.deepEqual(valuesFor('editStockColorTypeSelect'), ['normal', 'shiny']);
-    assert.deepEqual(valuesFor('editStockBackCardSelect'), ['none', 'special', 'commemorative']);
+    assert.deepEqual(valuesFor('editStockBackCardSelect'), ['none', 'special', 'commemorative', 'costume']);
 });
 
 test('opening validates stock state and prefills normalized current values', () => {
@@ -47,7 +47,7 @@ test('opening validates stock state and prefills normalized current values', () 
     assert.match(opener, /editingStockId = item\.id/);
     assert.match(opener, /populateEditStockAccountSelect\(item\.account \|\| ''\)/);
     assert.match(opener, /editStockPokemonInput\.value = item\.name \|\| ''/);
-    assert.match(opener, /normalizeInventoryYear\(item\.year\)/);
+    assert.doesNotMatch(opener, /year|editStockYearSelect|normalizeInventoryYear/);
     assert.match(opener, /normalizeColorType\(item\.colorType\)/);
     assert.match(opener, /normalizeBackCardType\(item\.backCardType\)/);
 });
@@ -60,13 +60,13 @@ test('account options reuse savedAccounts and preserve an absent legacy account'
     assert.equal((script.match(/onSnapshot\(collection\(db, "accounts"\)/g) || []).length, 1);
 });
 
-test('save rejects blank names, revalidates stock, and writes only five fields', () => {
+test('save rejects blank names, revalidates stock, and writes exactly four fields', () => {
     assert.match(saveHandler, /const name = editStockPokemonInput\.value\.trim\(\)/);
     assert.match(saveHandler, /if \(!name\) return alert\("請填寫寶可夢名稱"\)/);
     assert.match(saveHandler, /pokemons\.find\(p => p\.id === editingStockId\)/);
     assert.match(saveHandler, /!item \|\| item\.status !== 'stock'/);
-    assert.match(saveHandler, /updateDoc\(doc\(db, "inventory", editingStockId\), \{\s*account,\s*name,\s*year,\s*colorType,\s*backCardType\s*\}\)/);
-    assert.doesNotMatch(saveHandler, /status:|partner:|tradeDate:|createdAt:|luckyTrinket:|completedAt:|quantity:|findNextAvailableDate/);
+    assert.match(saveHandler, /updateDoc\(doc\(db, "inventory", editingStockId\), \{\s*account,\s*name,\s*colorType,\s*backCardType\s*\}\)/);
+    assert.doesNotMatch(saveHandler, /\byear\b|status:|partner:|tradeDate:|createdAt:|luckyTrinket:|completedAt:|quantity:|findNextAvailableDate/);
 });
 
 test('cancel only closes its modal and stock edit state stays isolated', () => {

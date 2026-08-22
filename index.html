@@ -70,26 +70,10 @@
                 <h2 class="text-lg md:text-xl font-bold text-gray-800">新增庫存</h2>
             </div>
             <div class="grid grid-cols-2 md:grid-cols-12 gap-3 md:gap-4 p-3 md:p-4 bg-white/50 rounded-2xl border border-white/50">
-                <div class="col-span-2 md:col-span-2 space-y-1">
+                <div class="col-span-2 md:col-span-3 space-y-1">
                     <label class="block text-[10px] md:text-xs font-bold text-blue-600 ml-1 uppercase">選擇帳號</label>
                     <select id="accountSelect" class="border-0 bg-white p-2.5 rounded-xl w-full shadow-sm text-sm">
                         <option value="">-- 選擇帳號 --</option>
-                    </select>
-                </div>
-                <div class="space-y-1 md:col-span-2">
-                    <label class="block text-[10px] md:text-xs font-bold text-blue-600 ml-1 uppercase">年份</label>
-                    <select id="yearSelect" class="border-0 bg-white p-2.5 rounded-xl w-full shadow-sm text-sm">
-                        <option value="2016">2016</option>
-                        <option value="2017">2017</option>
-                        <option value="2018">2018</option>
-                        <option value="2019">2019</option>
-                        <option value="2020">2020</option>
-                        <option value="2021">2021</option>
-                        <option value="2022">2022</option>
-                        <option value="2023">2023</option>
-                        <option value="2024">2024</option>
-                        <option value="2025">2025</option>
-                        <option value="2026" selected>2026</option>
                     </select>
                 </div>
                 <div class="space-y-1 md:col-span-2">
@@ -98,6 +82,7 @@
                         <option value="none" selected>無</option>
                         <option value="special">特別背卡</option>
                         <option value="commemorative">紀念背卡</option>
+                        <option value="costume">裝扮</option>
                     </select>
                 </div>
                 <div class="space-y-1 md:col-span-2">
@@ -107,7 +92,7 @@
                         <option value="shiny" selected>異色</option>
                     </select>
                 </div>
-                <div class="col-span-2 md:col-span-2 space-y-1">
+                <div class="col-span-2 md:col-span-3 space-y-1">
                     <label class="block text-[10px] md:text-xs font-bold text-blue-600 ml-1 uppercase">寶可夢名稱</label>
                     <input type="text" id="pokemonInput" placeholder="輸入寶可夢名稱" class="border-0 bg-white p-2.5 rounded-xl w-full shadow-sm text-sm">
                 </div>
@@ -183,22 +168,6 @@
                     <input type="text" id="editStockPokemonInput" class="border border-gray-200 bg-white p-3 rounded-xl w-full text-base">
                 </div>
                 <div>
-                    <label for="editStockYearSelect" class="block mb-1 text-xs font-bold text-blue-600">年份</label>
-                    <select id="editStockYearSelect" class="border border-gray-200 bg-white p-3 rounded-xl w-full text-base">
-                        <option value="2016">2016</option>
-                        <option value="2017">2017</option>
-                        <option value="2018">2018</option>
-                        <option value="2019">2019</option>
-                        <option value="2020">2020</option>
-                        <option value="2021">2021</option>
-                        <option value="2022">2022</option>
-                        <option value="2023">2023</option>
-                        <option value="2024">2024</option>
-                        <option value="2025">2025</option>
-                        <option value="2026">2026</option>
-                    </select>
-                </div>
-                <div>
                     <label for="editStockColorTypeSelect" class="block mb-1 text-xs font-bold text-blue-600">色違</label>
                     <select id="editStockColorTypeSelect" class="border border-gray-200 bg-white p-3 rounded-xl w-full text-base">
                         <option value="normal">普色</option>
@@ -211,6 +180,7 @@
                         <option value="none">無</option>
                         <option value="special">特別背卡</option>
                         <option value="commemorative">紀念背卡</option>
+                        <option value="costume">裝扮</option>
                     </select>
                 </div>
             </div>
@@ -323,7 +293,6 @@
         const editStockModal = document.getElementById('editStockModal');
         const editStockAccountSelect = document.getElementById('editStockAccountSelect');
         const editStockPokemonInput = document.getElementById('editStockPokemonInput');
-        const editStockYearSelect = document.getElementById('editStockYearSelect');
         const editStockColorTypeSelect = document.getElementById('editStockColorTypeSelect');
         const editStockBackCardSelect = document.getElementById('editStockBackCardSelect');
         const cancelEditStockBtn = document.getElementById('cancelEditStockBtn');
@@ -384,16 +353,12 @@
             return Number.isFinite(value) && value > 0 ? value : 0;
         }
 
-        function normalizeInventoryYear(value) {
-            return Number.isInteger(value) && value >= 2016 && value <= 2026 ? value : null;
-        }
-
         function normalizeColorType(value) {
             return value === 'shiny' ? 'shiny' : 'normal';
         }
 
         function normalizeBackCardType(value) {
-            return value === 'special' || value === 'commemorative' ? value : 'none';
+            return value === 'special' || value === 'commemorative' || value === 'costume' ? value : 'none';
         }
 
         function populateEditStockAccountSelect(currentAccount = '') {
@@ -412,26 +377,22 @@
         }
 
         function formatInventoryMetadata(item) {
-            const year = normalizeInventoryYear(item?.year);
             const colorLabel = normalizeColorType(item?.colorType) === 'shiny' ? '異色' : '普色';
-            const backCardLabels = { none: '', special: '特別背卡', commemorative: '紀念背卡' };
+            const backCardLabels = { none: '', special: '特別背卡', commemorative: '紀念背卡', costume: '裝扮' };
             const backCardLabel = backCardLabels[normalizeBackCardType(item?.backCardType)];
-            return [year === null ? '' : `${String(year).slice(-2)}年`, colorLabel, backCardLabel].filter(Boolean).join(' | ');
+            return [colorLabel, backCardLabel].filter(Boolean).join(' | ');
         }
 
         function formatInventoryCopyText(item) {
-            const year = normalizeInventoryYear(item?.year);
-            const backCardLabels = { none: '', special: '特別背卡', commemorative: '紀念背卡' };
-            const yearLabel = year === null ? '' : `${String(year).slice(-2)}年`;
+            const backCardLabels = { none: '', special: '特別背卡', commemorative: '紀念背卡', costume: '裝扮' };
             const colorLabel = normalizeColorType(item?.colorType) === 'shiny' ? '異色' : '';
             const backCardLabel = backCardLabels[normalizeBackCardType(item?.backCardType)];
-            return `${yearLabel}${colorLabel}${backCardLabel}${item?.name || ''}`;
+            return `${colorLabel}${backCardLabel}${item?.name || ''}`;
         }
 
         function getInventoryGroupingKey(item) {
             return JSON.stringify([
                 String(item?.account || ''),
-                normalizeInventoryYear(item?.year),
                 normalizeColorType(item?.colorType),
                 normalizeBackCardType(item?.backCardType),
                 item?.name || ''
@@ -786,7 +747,6 @@
             editingStockId = item.id;
             populateEditStockAccountSelect(item.account || '');
             editStockPokemonInput.value = item.name || '';
-            editStockYearSelect.value = String(normalizeInventoryYear(item.year) ?? 2026);
             editStockColorTypeSelect.value = normalizeColorType(item.colorType);
             editStockBackCardSelect.value = normalizeBackCardType(item.backCardType);
             editStockModal.classList.remove('hidden');
@@ -906,7 +866,6 @@
         saveEditStockBtn.addEventListener('click', async () => {
             const account = editStockAccountSelect.value;
             const name = editStockPokemonInput.value.trim();
-            const year = normalizeInventoryYear(Number(editStockYearSelect.value));
             const colorType = normalizeColorType(editStockColorTypeSelect.value);
             const backCardType = normalizeBackCardType(editStockBackCardSelect.value);
             if (!name) return alert("請填寫寶可夢名稱");
@@ -918,7 +877,6 @@
             await updateDoc(doc(db, "inventory", editingStockId), {
                 account,
                 name,
-                year,
                 colorType,
                 backCardType
             });
@@ -933,7 +891,6 @@
 
         document.getElementById('addPokemonBtn').addEventListener('click', async () => {
             const acc = document.getElementById('accountSelect').value, name = document.getElementById('pokemonInput').value.trim(), qty = parseInt(document.getElementById('quantityInput').value) || 1;
-            const year = Number(document.getElementById('yearSelect').value);
             const colorType = normalizeColorType(document.getElementById('colorTypeSelect').value);
             const backCardType = document.getElementById('backCardSelect').value;
             if (!acc || !name) return alert("請填寫");
@@ -941,14 +898,13 @@
             const createdAt = new Date().getTime();
             for (let i = 0; i < qty; i++) {
                 const ref = doc(collection(db, "inventory"));
-                const data = { account: acc, name, year, colorType, backCardType, quantity: 1, status: 'stock', partner: '', tradeDate: '', createdAt: createdAt + i };
+                const data = { account: acc, name, colorType, backCardType, quantity: 1, status: 'stock', partner: '', tradeDate: '', createdAt: createdAt + i };
                 const item = { id: ref.id, ...data };
                 pendingInventoryItems.set(ref.id, item);
                 writes.push({ ref, data });
             }
             document.getElementById('pokemonInput').value = '';
             document.getElementById('quantityInput').value = '1';
-            document.getElementById('yearSelect').value = '2026';
             document.getElementById('backCardSelect').value = 'none';
             document.getElementById('colorTypeSelect').value = 'shiny';
             rebuildEffectiveInventory();
