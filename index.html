@@ -51,30 +51,11 @@
                 <button id="copyCostumeFilterBtn" type="button" class="min-w-[84px] px-5 py-2 rounded-full bg-orange-500 text-white font-bold text-sm shadow-lg hover:bg-orange-600 active:scale-95 transition-all">裝扮</button>
                 <button id="copyBackgroundFilterBtn" type="button" class="min-w-[84px] px-5 py-2 rounded-full bg-pink-500 text-white font-bold text-sm shadow-lg hover:bg-pink-600 active:scale-95 transition-all">背卡</button>
             </div>
-        </div>
-
-        <div class="glass-panel p-4 md:p-5 rounded-2xl shadow-xl border-l-8 border-green-500">
-            <div class="flex flex-col md:flex-row items-start md:items-center gap-4">
-                <div class="flex items-center gap-3 shrink-0 w-full md:w-auto">
-                    <span class="font-bold text-gray-700 shrink-0 text-sm md:text-base">帳號管理</span>
-                    <input type="text" id="newAccountInput" placeholder="輸入帳號" class="flex-1 md:w-40 bg-white border border-gray-200 p-2 rounded-xl focus:ring-2 focus:ring-green-400 outline-none text-sm shadow-sm">
-                    <button id="saveAccountBtn" class="bg-green-600 text-white px-4 py-2 rounded-xl hover:bg-green-700 transition-all text-sm font-bold shadow-md active:scale-95 shrink-0">保存</button>
-                </div>
-                <div id="accountTags" class="flex flex-wrap gap-2 flex-1"></div>
+            <div class="mt-3 flex flex-wrap justify-center gap-2">
+                <button id="openAccountManagementBtn" type="button" class="min-h-11 rounded-xl bg-green-600 px-3 py-2 text-sm font-bold text-white shadow-md transition-all hover:bg-green-700 active:scale-95">👤 帳號管理</button>
+                <button id="openScheduleOverviewBtn" type="button" class="min-h-11 rounded-xl bg-orange-500 px-3 py-2 text-sm font-bold text-white shadow-md transition-all hover:bg-orange-600 active:scale-95">📅 待交換清單</button>
+                <button id="openLuckyTrinketStatusBtn" type="button" class="min-h-11 rounded-xl bg-purple-600 px-3 py-2 text-sm font-bold text-white shadow-md transition-all hover:bg-purple-700 active:scale-95">💎 亮晶晶首飾</button>
             </div>
-        </div>
-
-        <div class="glass-panel overflow-hidden rounded-2xl shadow-xl" aria-labelledby="luckyTrinketStatusTitle">
-            <h2 id="luckyTrinketStatusTitle" class="px-4 pt-4 text-lg font-black text-gray-800">Lucky Trinket</h2>
-            <table class="w-full table-fixed text-left text-sm">
-                <thead class="border-b border-gray-200 text-gray-500">
-                    <tr>
-                        <th scope="col" class="w-2/3 px-4 py-3 font-bold">帳號</th>
-                        <th scope="col" class="w-1/3 px-4 py-3 font-bold">首飾狀態</th>
-                    </tr>
-                </thead>
-                <tbody id="luckyTrinketAccountList" class="divide-y divide-gray-100"></tbody>
-            </table>
         </div>
 
         <div class="glass-panel p-5 md:p-6 rounded-3xl shadow-2xl">
@@ -119,14 +100,6 @@
             </div>
         </div>
 
-        <div class="glass-panel p-5 md:p-6 rounded-3xl shadow-2xl border-t-8 border-orange-400">
-            <div class="flex items-center gap-2 mb-4">
-                <div class="w-2 h-6 bg-orange-500 rounded-full"></div>
-                <h2 class="text-lg md:text-xl font-bold text-gray-800">📅 待交換清單 (僅顯示當日與未來，已完成自動隱藏)</h2>
-            </div>
-            <div id="scheduleTimeline" class="flex gap-3 md:gap-4 overflow-x-auto pb-4"></div>
-        </div>
-
         <div class="glass-panel p-5 md:p-6 rounded-3xl shadow-2xl">
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 border-b border-gray-200 pb-4">
                 <div class="flex flex-wrap gap-2">
@@ -149,6 +122,47 @@
                 </div>
             </div>
             <div id="pokemonList" class="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4"></div>
+        </div>
+    </div>
+
+    <div id="accountManagementModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="accountManagementModalTitle">
+        <div class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl md:p-6">
+            <h2 id="accountManagementModalTitle" class="text-xl font-black text-gray-800">👤 帳號管理</h2>
+            <div class="mt-4 flex flex-col gap-4">
+                <div class="flex w-full items-center gap-3">
+                    <input type="text" id="newAccountInput" placeholder="輸入帳號" class="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white p-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-green-400">
+                    <button id="saveAccountBtn" class="min-h-11 shrink-0 rounded-xl bg-green-600 px-4 py-2 text-sm font-bold text-white shadow-md transition-all hover:bg-green-700 active:scale-95">保存</button>
+                </div>
+                <div id="accountTags" class="flex flex-wrap gap-2"></div>
+            </div>
+            <button id="closeAccountManagementModalBtn" type="button" class="mt-5 min-h-11 w-full rounded-2xl bg-gray-100 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-200">關閉</button>
+        </div>
+    </div>
+
+    <div id="scheduleOverviewModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="scheduleOverviewModalTitle">
+        <div class="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl md:p-6">
+            <h2 id="scheduleOverviewModalTitle" class="text-xl font-black text-gray-800">📅 待交換清單</h2>
+            <p class="mt-1 text-sm font-bold text-gray-500">僅顯示當日與未來，已完成自動隱藏</p>
+            <div id="scheduleTimeline" class="mt-4 flex gap-3 overflow-x-auto pb-4 md:gap-4"></div>
+            <button id="closeScheduleOverviewModalBtn" type="button" class="mt-2 min-h-11 w-full rounded-2xl bg-gray-100 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-200">關閉</button>
+        </div>
+    </div>
+
+    <div id="luckyTrinketStatusModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="luckyTrinketStatusTitle">
+        <div class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl md:p-6">
+            <div class="glass-panel overflow-hidden rounded-2xl shadow-xl" aria-labelledby="luckyTrinketStatusTitle">
+                <h2 id="luckyTrinketStatusTitle" class="px-4 pt-4 text-xl font-black text-gray-800">💎 亮晶晶首飾</h2>
+                <table class="w-full table-fixed text-left text-sm">
+                    <thead class="border-b border-gray-200 text-gray-500">
+                        <tr>
+                            <th scope="col" class="w-2/3 px-4 py-3 font-bold">帳號</th>
+                            <th scope="col" class="w-1/3 px-4 py-3 font-bold">首飾狀態</th>
+                        </tr>
+                    </thead>
+                    <tbody id="luckyTrinketAccountList" class="divide-y divide-gray-100"></tbody>
+                </table>
+            </div>
+            <button id="closeLuckyTrinketStatusBtn" type="button" class="mt-5 min-h-11 w-full rounded-2xl bg-gray-100 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-200">關閉</button>
         </div>
     </div>
 
@@ -276,6 +290,39 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+
+        const utilityModals = ['accountManagementModal', 'scheduleOverviewModal', 'luckyTrinketStatusModal']
+            .map(id => document.getElementById(id));
+        const accountManagementModal = document.getElementById('accountManagementModal');
+        const scheduleOverviewModal = document.getElementById('scheduleOverviewModal');
+        const luckyTrinketStatusModal = document.getElementById('luckyTrinketStatusModal');
+
+        function openUtilityModal(targetModal) {
+            utilityModals.forEach(modal => modal.classList.add('hidden'));
+            targetModal.classList.remove('hidden');
+        }
+
+        function closeUtilityModal(modal) {
+            modal.classList.add('hidden');
+        }
+
+        document.getElementById('openAccountManagementBtn').addEventListener('click', () => {
+            openUtilityModal(accountManagementModal);
+        });
+        document.getElementById('openScheduleOverviewBtn').addEventListener('click', () => {
+            renderTimeline();
+            openUtilityModal(scheduleOverviewModal);
+        });
+        document.getElementById('openLuckyTrinketStatusBtn').addEventListener('click', () => {
+            renderLuckyTrinketAccounts();
+            openUtilityModal(luckyTrinketStatusModal);
+        });
+        document.getElementById('closeAccountManagementModalBtn').addEventListener('click', () => closeUtilityModal(accountManagementModal));
+        document.getElementById('closeScheduleOverviewModalBtn').addEventListener('click', () => closeUtilityModal(scheduleOverviewModal));
+        document.getElementById('closeLuckyTrinketStatusBtn').addEventListener('click', () => closeUtilityModal(luckyTrinketStatusModal));
+        utilityModals.forEach(modal => modal.addEventListener('click', event => {
+            if (event.target === modal) closeUtilityModal(modal);
+        }));
 
         let currentTab = 'stock', pokemons = [], syncedPokemons = [], savedAccounts = [], selectedId = null, selectedAccName = null;
         let selectedLuckyTrinket = null;
