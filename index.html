@@ -536,6 +536,17 @@
             return Number.isInteger(value) && value > 0;
         }
 
+        function getStockItemSavedPrice(item, priceMap) {
+            const priceKey = getInventoryGroupingKey(item);
+            const price = priceMap.get(priceKey);
+            return isValidStockCopyPrice(price) ? price : undefined;
+        }
+
+        function getStockItemPriceLabel(item, priceMap) {
+            const price = getStockItemSavedPrice(item, priceMap);
+            return price === undefined ? '💰 未設定價格' : `💰 ${price}元`;
+        }
+
         function getSavedCopyPrices(groups, priceMap) {
             return groups.map(group => {
                 const price = priceMap.get(group.priceKey);
@@ -754,6 +765,7 @@
             });
             stockCopyPriceMap = nextPrices;
             if (!document.getElementById('copyModal').classList.contains('hidden')) refreshStockCopyPriceUi();
+            if (currentTab === 'stock' || currentTab === 'all') render();
         }, error => console.error('讀取現貨文案價格失敗：', error));
 
         function renderTimeline() {
@@ -1157,10 +1169,16 @@
             filtered.forEach(p => {
                 const div = document.createElement('div');
                 div.className = "bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between transition-all";
-                let action = '', tag = '', actionIncludesDelete = false;
+                let action = '', tag = '', stockPriceMarkup = '', actionIncludesDelete = false;
                 const inventoryMetadata = formatInventoryMetadata(p);
                 
                 if (p.status === 'stock') {
+                    const price = getStockItemSavedPrice(p, stockCopyPriceMap);
+                    const priceLabel = getStockItemPriceLabel(p, stockCopyPriceMap);
+                    const priceClasses = price === undefined
+                        ? 'bg-amber-50 text-amber-700 border-amber-200'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                    stockPriceMarkup = `<span class="mt-1.5 w-fit rounded-lg border px-2 py-0.5 text-xs font-bold ${priceClasses}">${priceLabel}</span>`;
                     const isFastest = (searchText !== '' && p.nextDateStr === fastestDate);
                     if (isFastest) {
                         tag = `<div class="flex items-center gap-1.5"><span class="text-blue-500 text-[9px] md:text-[10px] font-black bg-blue-50 px-2 py-0.5 rounded border border-blue-100 shrink-0">在庫</span><span class="text-red-600 text-[9px] md:text-[10px] font-black bg-red-50 px-2 py-0.5 rounded border border-red-200 shadow-sm shrink-0">🔥 推薦最快: ${p.nextDateStr}</span></div>`;
@@ -1180,7 +1198,7 @@
                     action = `<div class="flex flex-col items-start gap-1.5 shrink-0"><button onclick="restoreToStock('${p.id}')" class="bg-slate-600 text-white px-3 py-2 rounded-xl text-xs md:text-sm font-bold shadow-md active:scale-95 whitespace-nowrap min-w-[72px] shrink-0">恢復在庫</button><div class="flex items-center gap-1 md:gap-2"><div class="bg-green-500 text-white px-3 md:px-4 py-2 rounded-xl text-[10px] md:text-xs font-black min-w-[72px] text-center shrink-0">已完成</div><button onclick="deleteItem('${p.id}')" class="text-red-200 hover:text-red-400 p-2 text-lg leading-none">&times;</button></div></div>`;
                 }
                 const luckyTrinketLabel = p.status === 'trading' ? getLuckyTrinketLabel(p.luckyTrinket) : '';
-                div.innerHTML = `<div class="flex flex-col flex-1 min-w-0 w-full md:pr-2"><div class="flex flex-col md:flex-row md:items-center gap-2 md:gap-2 mb-2 md:mb-1"><div class="flex flex-wrap items-center gap-1.5 md:gap-2">${tag}</div><div class="flex items-center gap-1 min-w-0 w-full md:w-auto"><span class="text-[9px] md:text-[10px] text-gray-400 font-mono truncate min-w-0">@${p.account}</span><button onclick="copy('${p.account}', this)" class="text-[9px] md:text-[10px] text-blue-400 font-bold shrink-0">複製</button></div></div>${inventoryMetadata ? `<span class="text-xs font-black text-purple-600 mb-0.5">${inventoryMetadata}</span>` : ''}<span class="text-base md:text-lg font-black text-gray-800 truncate w-full">${p.name}</span>${p.partner ? `<div class="flex items-center gap-2 mt-0.5 min-w-0"><span class="text-[10px] text-indigo-500 font-bold uppercase tracking-tighter truncate min-w-0">買家: ${p.partner}</span><button onclick="copy('${p.partner}', this)" class="text-[9px] text-indigo-400 font-bold shrink-0">複製</button></div>` : ''}${luckyTrinketLabel ? `<span class="mt-1 text-[10px] font-bold text-amber-700">✨ ${luckyTrinketLabel}</span>` : ''}</div><div class="flex items-center justify-end gap-1 md:gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0">${action}${actionIncludesDelete ? '' : `<button onclick="deleteItem('${p.id}')" class="text-red-200 hover:text-red-400 p-2 text-lg leading-none">&times;</button>`}</div>`;
+                div.innerHTML = `<div class="flex flex-col flex-1 min-w-0 w-full md:pr-2"><div class="flex flex-col md:flex-row md:items-center gap-2 md:gap-2 mb-2 md:mb-1"><div class="flex flex-wrap items-center gap-1.5 md:gap-2">${tag}</div><div class="flex items-center gap-1 min-w-0 w-full md:w-auto"><span class="text-[9px] md:text-[10px] text-gray-400 font-mono truncate min-w-0">@${p.account}</span><button onclick="copy('${p.account}', this)" class="text-[9px] md:text-[10px] text-blue-400 font-bold shrink-0">複製</button></div></div>${inventoryMetadata ? `<span class="text-xs font-black text-purple-600 mb-0.5">${inventoryMetadata}</span>` : ''}<span class="text-base md:text-lg font-black text-gray-800 truncate w-full">${p.name}</span>${stockPriceMarkup}${p.partner ? `<div class="flex items-center gap-2 mt-0.5 min-w-0"><span class="text-[10px] text-indigo-500 font-bold uppercase tracking-tighter truncate min-w-0">買家: ${p.partner}</span><button onclick="copy('${p.partner}', this)" class="text-[9px] text-indigo-400 font-bold shrink-0">複製</button></div>` : ''}${luckyTrinketLabel ? `<span class="mt-1 text-[10px] font-bold text-amber-700">✨ ${luckyTrinketLabel}</span>` : ''}</div><div class="flex items-center justify-end gap-1 md:gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0">${action}${actionIncludesDelete ? '' : `<button onclick="deleteItem('${p.id}')" class="text-red-200 hover:text-red-400 p-2 text-lg leading-none">&times;</button>`}</div>`;
                 list.appendChild(div);
             });
         }
@@ -1403,6 +1421,7 @@
             message.classList.remove('text-red-600');
             message.classList.add('text-green-600');
             refreshStockCopyPriceUi('價格已儲存');
+            if (currentTab === 'stock' || currentTab === 'all') render();
         });
 
         document.getElementById('closeCopyModalBtn').addEventListener('click', () => {
