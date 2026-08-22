@@ -67,7 +67,7 @@ test('form resets immediately without clearing the selected account', () => {
     const immediate = handler.slice(0, persist);
     assert.match(immediate, /pokemonInput'\)\.value = ''/);
     assert.match(immediate, /quantityInput'\)\.value = '1'/);
-    assert.match(immediate, /yearSelect'\)\.value = '2026'/);
+    assert.doesNotMatch(handler, /yearSelect/);
     assert.match(immediate, /backCardSelect'\)\.value = 'none'/);
     assert.match(immediate, /colorTypeSelect'\)\.value = 'shiny'/);
     assert.doesNotMatch(handler, /accountSelect'\)\.value\s*=/);
@@ -79,12 +79,13 @@ test('quantity loop stages one unit item and unique ref for every background wri
     assert.match(handler, /writes\.map\(\(\{ ref, data \}\) => setDoc\(ref, data\)/);
 });
 
-test('color type is part of data before optimistic staging and persistence', () => {
+test('color and back-card types are part of year-free data before optimistic staging and persistence', () => {
     const handler = addHandlerSource();
-    const data = handler.indexOf('const data = { account: acc, name, year, colorType, backCardType');
+    const data = handler.indexOf('const data = { account: acc, name, colorType, backCardType');
     const stage = handler.indexOf('pendingInventoryItems.set(ref.id, item)');
     const persist = handler.indexOf('setDoc(ref, data)');
     assert.ok(data !== -1 && stage > data && persist > stage);
+    assert.doesNotMatch(handler, /\byear\b/);
 });
 
 test('snapshot reconciliation deduplicates synced IDs without dropping other pending IDs', () => {
