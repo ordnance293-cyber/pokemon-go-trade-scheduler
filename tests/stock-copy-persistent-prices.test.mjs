@@ -25,9 +25,9 @@ function source(name) {
 function helpers() {
     const names = ['normalizeColorType', 'normalizeBackCardType', 'getInventoryGroupingKey', 'parseCopyPrices', 'isValidStockCopyPrice',
         'getSavedCopyPrices', 'getMissingCopyPriceTargets', 'getCopyPriceBatchResult',
-        'getAllCopyPriceEditState', 'buildStockCopyLines', 'normalizeLuckyTrinket',
+        'getAllCopyPriceEditState', 'buildStockCopyLines', 'getLuckyTrinketCycleForDate', 'getLuckyTrinketCycleLockKey', 'isActiveLuckyTrinketCycleLock', 'timestampToLocalDate', 'isLegacySellerRecordRelevantToCycle', 'normalizeLuckyTrinket',
         'accountHasLuckyTrinket', 'getLuckyTrinketAccountDisplayName', 'buildStockCopyAccountHeader'];
-    return vm.runInNewContext(`(() => { ${names.map(source).join('\n')}; return {${names.join(',')}} })()`);
+    return vm.runInNewContext(`(() => { const LUCKY_TRINKET_CYCLES=[{id:'2026-08-go-pass',startDate:'2026-08-04',endDate:'2026-09-08'}]; const LEGACY_LUCKY_TRINKET_ROLLOUT_CYCLE_ID='2026-08-go-pass'; const luckyTrinketCycleLockMap=new Map(); const getTodayStr=()=> '2026-08-23'; ${names.map(source).join('\n')}; return {${names.join(',')}} })()`);
 }
 
 const group = (account, name, quantity = 1) => ({

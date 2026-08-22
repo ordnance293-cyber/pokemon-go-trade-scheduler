@@ -24,9 +24,9 @@ function functionSource(name) {
 }
 
 function loadHelpers() {
-    const names = ['normalizeLuckyTrinket', 'accountHasLuckyTrinket', 'getLuckyTrinketAccountDisplayName', 'buildStockCopyAccountHeader', 'normalizeColorType', 'normalizeBackCardType', 'formatInventoryMetadata', 'formatInventoryCopyText', 'getInventoryGroupingKey', 'getStockInventoryCount', 'parseCopyPrices', 'buildStockCopyLines', 'getStockCopyPreamble', 'buildFullStockCopyText', 'getCopyPriceResult', 'insertPriceSeparator'];
+    const names = ['getLuckyTrinketCycleForDate', 'getLuckyTrinketCycleLockKey', 'isActiveLuckyTrinketCycleLock', 'timestampToLocalDate', 'isLegacySellerRecordRelevantToCycle', 'normalizeLuckyTrinket', 'accountHasLuckyTrinket', 'getLuckyTrinketAccountDisplayName', 'buildStockCopyAccountHeader', 'normalizeColorType', 'normalizeBackCardType', 'formatInventoryMetadata', 'formatInventoryCopyText', 'getInventoryGroupingKey', 'getStockInventoryCount', 'parseCopyPrices', 'buildStockCopyLines', 'getStockCopyPreamble', 'buildFullStockCopyText', 'getCopyPriceResult', 'insertPriceSeparator'];
     const source = names.map(functionSource).join('\n');
-    return vm.runInNewContext(`(() => { ${source}; return { ${names.join(',')} }; })()`);
+    return vm.runInNewContext(`(() => { const LUCKY_TRINKET_CYCLES=[{id:'2026-08-go-pass',label:'2026年8月 GO Pass',startDate:'2026-08-04',endDate:'2026-09-08'}]; const LEGACY_LUCKY_TRINKET_ROLLOUT_CYCLE_ID='2026-08-go-pass'; const luckyTrinketCycleLockMap=new Map(); const getTodayStr=()=> '2026-08-23'; ${source}; return { ${names.join(',')} }; })()`);
 }
 
 test('color type is a shiny-default native select with exact options', () => {
@@ -179,7 +179,7 @@ test('stock copy grouping key keeps full accounts separate when the displayed pr
     );
 });
 
-test('stock copy headers use full-history trinket status and display exact six-character format', () => {
+test('stock copy headers use current-cycle trinket status and display exact six-character format', () => {
     const { buildStockCopyLines } = loadHelpers();
     const groups = [
         { account: 'abcdef111111', label: '異色皮卡丘', quantity: 2 },
@@ -189,7 +189,7 @@ test('stock copy headers use full-history trinket status and display exact six-c
     ];
     const inventory = [
         ...groups.map(group => ({ ...group, status: 'stock' })),
-        { account: 'xyz789654321', status: 'trading', luckyTrinket: 'seller' },
+        { account: 'xyz789654321', status: 'trading', luckyTrinket: 'seller', luckyTrinketCycleId: '2026-08-go-pass' },
         { account: 'abcdef111111', status: 'trading', luckyTrinket: 'buyer' }
     ];
     const result = buildStockCopyLines(groups, null, inventory);
@@ -214,7 +214,7 @@ test('account-grouped prices follow displayed Pokemon lines rather than account 
         { account: 'abcdef111111', label: '異色烈空坐', quantity: 1 }
     ];
     assert.equal(
-        getCopyPriceResult(groups, '150 300 200', [{ account: 'xyz789654321', status: 'done', luckyTrinket: 'seller' }]).text,
+        getCopyPriceResult(groups, '150 300 200', [{ account: 'xyz789654321', status: 'done', luckyTrinket: 'seller', luckyTrinketCycleId: '2026-08-go-pass' }]).text,
         '【abcdef｜🟢 有首飾】\n🔥 異色皮卡丘｜1隻150元\n🔥 異色烈空坐｜1隻300元\n\n【xyz789｜🔴 無首飾】\n🔥 異色夢幻｜1隻200元'
     );
     assert.deepEqual(
@@ -223,7 +223,7 @@ test('account-grouped prices follow displayed Pokemon lines rather than account 
     );
 });
 
-test('stock copy includes stock accounts only while full history controls availability', () => {
+test('stock copy includes stock accounts only while current-cycle usage controls availability', () => {
     const { buildStockCopyLines } = loadHelpers();
     const stockGroups = [
         { account: 'dfVYS8H0Gp9o2Xi7;Bestmoonvn@2024', label: '異色蓋歐卡', quantity: 1 },
@@ -232,7 +232,7 @@ test('stock copy includes stock accounts only while full history controls availa
     const allItems = [
         ...stockGroups.map(group => ({ ...group, status: 'stock' })),
         { account: stockGroups[0].account, status: 'trading', luckyTrinket: 'buyer' },
-        { account: stockGroups[1].account, status: 'trading', luckyTrinket: 'seller' },
+        { account: stockGroups[1].account, status: 'trading', luckyTrinket: 'seller', luckyTrinketCycleId: '2026-08-go-pass' },
         { account: 'savedOnly123', status: 'done', luckyTrinket: 'seller' }
     ];
     const result = buildStockCopyLines(stockGroups, null, allItems);

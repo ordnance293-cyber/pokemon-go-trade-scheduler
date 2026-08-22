@@ -152,6 +152,7 @@
         <div class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl md:p-6">
             <div class="glass-panel overflow-hidden rounded-2xl shadow-xl" aria-labelledby="luckyTrinketStatusTitle">
                 <h2 id="luckyTrinketStatusTitle" class="px-4 pt-4 text-xl font-black text-gray-800">💎 亮晶晶首飾</h2>
+                <p id="luckyTrinketCycleSubtitle" class="px-4 pb-2 text-xs font-bold text-gray-500"></p>
                 <table class="w-full table-fixed text-left text-sm">
                     <thead class="border-b border-gray-200 text-gray-500">
                         <tr>
@@ -173,8 +174,9 @@
             <input type="text" id="partnerInput" placeholder="買家名稱" class="border border-gray-200 p-3 rounded-2xl w-full mt-4 text-center focus:ring-2 focus:ring-orange-400 outline-none font-bold text-base">
             <div class="grid grid-cols-1 gap-2 mt-3">
                 <button id="luckyTrinketBuyerBtn" type="button" aria-pressed="false" class="min-h-11 rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-500">亮晶晶首飾（他出）</button>
-                <button id="luckyTrinketSellerBtn" type="button" aria-pressed="false" class="min-h-11 rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-500">亮晶晶首飾（我出）</button>
+                <button id="luckyTrinketSellerBtn" type="button" aria-pressed="false" aria-describedby="tradeLuckyTrinketMessage" class="min-h-11 rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-500 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:opacity-60">亮晶晶首飾（我出）</button>
             </div>
+            <p id="tradeLuckyTrinketMessage" aria-live="polite" class="mt-2 text-xs font-bold text-gray-500"></p>
             <div class="flex gap-2 mt-5">
                 <button id="cancelTradeBtn" type="button" class="min-h-11 flex-1 py-2 text-gray-400 font-bold text-sm">取消</button>
                 <button id="confirmTradeBtn" type="button" class="min-h-11 flex-[2] bg-orange-500 text-white py-2 rounded-2xl font-bold hover:bg-orange-600 active:scale-95 shadow-md text-sm transition-all">確認排隊</button>
@@ -302,7 +304,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, setDoc, onSnapshot, query, updateDoc, doc, deleteDoc, deleteField, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, setDoc, onSnapshot, query, updateDoc, doc, deleteDoc, deleteField, writeBatch, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBG_bVJ6-SxRHPBWyUmQUCICMfsvc9ixg4",
@@ -397,6 +399,55 @@
         const copyModal = document.getElementById('copyModal');
         let pendingCompleteId = null;
         let isCompleting = false;
+        let isConfirmingTrade = false;
+        let inventorySnapshotReady = false;
+        let luckyTrinketCycleLockSnapshotReady = false;
+        let legacyLuckyTrinketReconciled = false;
+        let luckyTrinketCycleLockMap = new Map();
+
+        const LUCKY_TRINKET_CYCLES = [
+            {
+                id: '2026-08-go-pass',
+                label: '2026年8月 GO Pass',
+                startDate: '2026-08-04',
+                endDate: '2026-09-08'
+            }
+        ];
+        const LEGACY_LUCKY_TRINKET_ROLLOUT_CYCLE_ID = '2026-08-go-pass';
+
+        function getLuckyTrinketCycleForDate(dateStr) {
+            return LUCKY_TRINKET_CYCLES.find(cycle => dateStr >= cycle.startDate && dateStr <= cycle.endDate) || null;
+        }
+
+        function getLuckyTrinketCycleLockKey(accountName, cycleId) {
+            return JSON.stringify([String(cycleId || ''), String(accountName || '')]);
+        }
+
+        function getLuckyTrinketCycleLockRef(accountName, cycleId) {
+            return doc(db, 'luckyTrinketCycleLocks', encodeURIComponent(getLuckyTrinketCycleLockKey(accountName, cycleId)));
+        }
+
+        function isActiveLuckyTrinketCycleLock(lock) {
+            return Boolean(lock && String(lock.cycleId || '') && String(lock.account || '') && ['reserved', 'used'].includes(lock.state));
+        }
+
+        function timestampToLocalDate(value) {
+            if (!Number.isFinite(value)) return '';
+            const date = new Date(value);
+            return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        }
+
+        function isLegacySellerRecordRelevantToCycle(item, cycle) {
+            if (!cycle || cycle.id !== LEGACY_LUCKY_TRINKET_ROLLOUT_CYCLE_ID || normalizeLuckyTrinket(item?.luckyTrinket) !== 'seller' || item?.luckyTrinketCycleId) return false;
+            if (item.status === 'stock') return !item.tradeDate || (item.tradeDate >= cycle.startDate && item.tradeDate <= cycle.endDate);
+            const tradeDateRelevant = item.tradeDate >= cycle.startDate && item.tradeDate <= cycle.endDate;
+            if (item.status === 'trading') return tradeDateRelevant;
+            if (item.status === 'done') {
+                const completedDate = timestampToLocalDate(item.completedAt);
+                return tradeDateRelevant || (completedDate >= cycle.startDate && completedDate <= cycle.endDate);
+            }
+            return false;
+        }
 
         function normalizeLuckyTrinket(value) {
             return value === 'buyer' || value === 'seller' ? value : null;
@@ -406,10 +457,35 @@
             return String(account || '').slice(0, 6);
         }
 
-        function accountHasLuckyTrinket(accountName, inventoryItems) {
-            return !inventoryItems.some(item =>
-                item?.account === accountName && normalizeLuckyTrinket(item?.luckyTrinket) === 'seller'
-            );
+        function accountHasLuckyTrinket(accountName, inventoryItems, cycle = getLuckyTrinketCycleForDate(getTodayStr()), lockMap = luckyTrinketCycleLockMap) {
+            if (!cycle) return false;
+            const lock = lockMap.get(getLuckyTrinketCycleLockKey(accountName, cycle.id));
+            if (isActiveLuckyTrinketCycleLock(lock)) return false;
+            return !inventoryItems.some(item => item?.account === accountName && normalizeLuckyTrinket(item?.luckyTrinket) === 'seller' && (
+                item.luckyTrinketCycleId === cycle.id || isLegacySellerRecordRelevantToCycle(item, cycle)
+            ));
+        }
+
+        function getArrangeSellerTrinketUiState(accountName, inventoryItems, cycle, lockMap, inventoryReady, lockReady) {
+            if (!inventoryReady || !lockReady) return { canSelectSeller: false, message: '首飾資料同步中，請稍後再試', tone: 'syncing' };
+            if (!cycle) return { canSelectSeller: false, message: '目前未設定 GO Pass 首飾週期，暫時無法使用「我出首飾」', tone: 'unavailable' };
+            if (!accountHasLuckyTrinket(accountName, inventoryItems, cycle, lockMap)) return { canSelectSeller: false, message: '本期首飾已預約或使用，無法再選「我出首飾」', tone: 'unavailable' };
+            return { canSelectSeller: true, message: `本期首飾可用｜${cycle.label}`, tone: 'available' };
+        }
+
+        function refreshArrangeLuckyTrinketAvailability() {
+            const tradeModal = document.getElementById('tradeModal');
+            if (tradeModal.classList.contains('hidden')) return;
+            const item = pokemons.find(item => item.id === selectedId && item.status === 'stock');
+            const cycle = getLuckyTrinketCycleForDate(getTodayStr());
+            const state = getArrangeSellerTrinketUiState(item?.account || '', pokemons, cycle, luckyTrinketCycleLockMap, inventorySnapshotReady && Boolean(item), luckyTrinketCycleLockSnapshotReady);
+            luckyTrinketSellerBtn.disabled = !state.canSelectSeller;
+            luckyTrinketSellerBtn.setAttribute('aria-disabled', String(!state.canSelectSeller));
+            const message = document.getElementById('tradeLuckyTrinketMessage');
+            message.textContent = state.message;
+            message.classList.remove('text-emerald-600', 'text-amber-700', 'text-gray-500');
+            message.classList.add(state.tone === 'available' ? 'text-emerald-600' : state.tone === 'syncing' ? 'text-gray-500' : 'text-amber-700');
+            if (!state.canSelectSeller && selectedLuckyTrinket === 'seller') setLuckyTrinketSelection(null);
         }
 
         function buildStockCopyAccountHeader(accountName, inventoryItems) {
@@ -419,7 +495,7 @@
             return `【${getLuckyTrinketAccountDisplayName(accountName)}｜${availabilityLabel}】`;
         }
 
-        function getLuckyTrinketAccountRows(accounts, inventoryItems) {
+        function getLuckyTrinketAccountRows(accounts, inventoryItems, cycle = getLuckyTrinketCycleForDate(getTodayStr()), lockMap = luckyTrinketCycleLockMap) {
             const seenNames = new Set();
             const rows = [];
 
@@ -427,7 +503,7 @@
                 const name = account?.name;
                 if (typeof name !== 'string' || name === '' || seenNames.has(name)) return;
                 seenNames.add(name);
-                const hasTrinket = accountHasLuckyTrinket(name, inventoryItems);
+                const hasTrinket = accountHasLuckyTrinket(name, inventoryItems, cycle, lockMap);
                 rows.push({ account: name, hasTrinket });
             });
 
@@ -439,6 +515,10 @@
 
         function renderLuckyTrinketAccounts() {
             const list = document.getElementById('luckyTrinketAccountList');
+            const cycle = getLuckyTrinketCycleForDate(getTodayStr());
+            document.getElementById('luckyTrinketCycleSubtitle').textContent = cycle
+                ? `目前週期：${cycle.label}｜${Number(cycle.startDate.slice(5, 7))}/${Number(cycle.startDate.slice(8))}～${Number(cycle.endDate.slice(5, 7))}/${Number(cycle.endDate.slice(8))}`
+                : '⚠️ 目前未設定 GO Pass 首飾週期';
             list.replaceChildren();
 
             getLuckyTrinketAccountRows(savedAccounts, pokemons).forEach(({ account, hasTrinket }) => {
@@ -778,6 +858,40 @@
             }
         }
 
+        onSnapshot(collection(db, "luckyTrinketCycleLocks"), (snapshot) => {
+            const nextLocks = new Map();
+            snapshot.docs.forEach(lockDoc => {
+                const lock = lockDoc.data();
+                if (isActiveLuckyTrinketCycleLock(lock)) nextLocks.set(getLuckyTrinketCycleLockKey(lock.account, lock.cycleId), lock);
+            });
+            luckyTrinketCycleLockMap = nextLocks;
+            luckyTrinketCycleLockSnapshotReady = true;
+            renderLuckyTrinketAccounts();
+            if (!copyModal.classList.contains('hidden')) refreshStockCopyPriceUi();
+            refreshArrangeLuckyTrinketAvailability();
+        }, error => console.error('讀取 GO Pass 首飾鎖失敗：', error));
+
+        async function reconcileLegacyLuckyTrinketLocksForRolloutCycle() {
+            const cycle = getLuckyTrinketCycleForDate(getTodayStr());
+            if (legacyLuckyTrinketReconciled || cycle?.id !== LEGACY_LUCKY_TRINKET_ROLLOUT_CYCLE_ID) return;
+            legacyLuckyTrinketReconciled = true;
+            const groups = new Map();
+            syncedPokemons.filter(item => isLegacySellerRecordRelevantToCycle(item, cycle) && item.account).forEach(item => {
+                const current = groups.get(item.account) || [];
+                current.push(item); groups.set(item.account, current);
+            });
+            for (const [account, items] of groups) {
+                const lockRef = getLuckyTrinketCycleLockRef(account, cycle.id);
+                await runTransaction(db, async transaction => {
+                    const existing = await transaction.get(lockRef);
+                    if (existing.exists()) return;
+                    const representative = items.find(item => item.status === 'done' || item.status === 'stock') || items[0];
+                    const now = Date.now();
+                    transaction.set(lockRef, { cycleId: cycle.id, account, inventoryId: representative.id, state: items.some(item => item.status === 'done' || item.status === 'stock') ? 'used' : 'reserved', reservedAt: now, usedAt: items.some(item => item.status === 'done' || item.status === 'stock') ? now : null, updatedAt: now, source: 'legacy-rollout-backfill' });
+                });
+            }
+        }
+
         onSnapshot(query(collection(db, "inventory")), (snapshot) => {
             syncedPokemons = snapshot.docs
                 .map(doc => ({ id: doc.id, ...doc.data() }))
@@ -785,6 +899,9 @@
             const syncedIds = new Set(syncedPokemons.map(item => item.id));
             syncedIds.forEach(id => pendingInventoryItems.delete(id));
             rebuildEffectiveInventory();
+            inventorySnapshotReady = true;
+            refreshArrangeLuckyTrinketAvailability();
+            reconcileLegacyLuckyTrinketLocksForRolloutCycle().catch(error => console.error('舊首飾鎖回填失敗：', error));
             
             checkAndRescheduleOverdue(); 
             render(); renderTimeline();
@@ -960,11 +1077,15 @@
         };
 
         window.openTrade = (id, accName) => {
-            selectedId = id; selectedAccName = accName;
-            document.getElementById('targetAccLabel').innerText = `@${accName}`;
+            const item = pokemons.find(item => item.id === id);
+            if (!item || item.status !== 'stock') return;
+            selectedId = item.id; selectedAccName = item.account;
+            document.getElementById('targetAccLabel').innerText = `@${item.account}`;
             document.getElementById('partnerInput').value = '';
             setLuckyTrinketSelection(null);
+            document.getElementById('tradeLuckyTrinketMessage').textContent = '';
             document.getElementById('tradeModal').classList.remove('hidden');
+            refreshArrangeLuckyTrinketAvailability();
         };
 
         window.openStockEdit = (id) => {
@@ -986,6 +1107,8 @@
             editTradePokemonLabel.textContent = formatInventoryCopyText(item);
             editTradePartnerInput.value = item.partner || '';
             setEditingLuckyTrinketSelection(item.luckyTrinket);
+            const ownReservation = normalizeLuckyTrinket(item.luckyTrinket) === 'seller';
+            editLuckyTrinketSellerBtn.disabled = !ownReservation && !accountHasLuckyTrinket(item.account, pokemons);
             editTradeModal.classList.remove('hidden');
         };
 
@@ -1060,19 +1183,84 @@
         }
 
         document.getElementById('confirmTradeBtn').addEventListener('click', async () => {
+            if (isConfirmingTrade) return;
             const partner = document.getElementById('partnerInput').value.trim();
             if (!partner) return alert("輸入買家");
             const autoDate = findNextAvailableDate(selectedAccName);
-            await updateDoc(doc(db, "inventory", selectedId), { status: 'trading', partner, tradeDate: autoDate, luckyTrinket: selectedLuckyTrinket });
-            document.getElementById('tradeModal').classList.add('hidden');
-            clearSearch(); 
+            const confirmTradeBtn = document.getElementById('confirmTradeBtn');
+            isConfirmingTrade = true; confirmTradeBtn.disabled = true; confirmTradeBtn.textContent = '處理中...';
+            try {
+                if (selectedLuckyTrinket === 'seller') {
+                    if (!inventorySnapshotReady) throw new Error('TRINKET_SYNCING');
+                    const cycle = getLuckyTrinketCycleForDate(getTodayStr());
+                    if (!cycle) throw new Error('NO_TRINKET_CYCLE');
+                    const inventoryRef = doc(db, "inventory", selectedId);
+                    await runTransaction(db, async transaction => {
+                        const inventorySnapshot = await transaction.get(inventoryRef);
+                        if (!inventorySnapshot.exists() || inventorySnapshot.data().status !== 'stock') throw new Error('INVENTORY_CHANGED');
+                        const accountName = String(inventorySnapshot.data().account || '');
+                        const lockRef = getLuckyTrinketCycleLockRef(accountName, cycle.id);
+                        const lockSnapshot = await transaction.get(lockRef);
+                        if (lockSnapshot.exists() && isActiveLuckyTrinketCycleLock(lockSnapshot.data()) && lockSnapshot.data().inventoryId !== selectedId) throw new Error('TRINKET_CONFLICT');
+                        const now = Date.now();
+                        transaction.set(lockRef, { cycleId: cycle.id, account: accountName, inventoryId: selectedId, state: 'reserved', reservedAt: now, usedAt: null, updatedAt: now, source: 'runtime' });
+                        transaction.update(inventoryRef, { status: 'trading', partner, tradeDate: autoDate, luckyTrinket: 'seller', luckyTrinketCycleId: cycle.id });
+                    });
+                } else {
+                    await updateDoc(doc(db, "inventory", selectedId), { status: 'trading', partner, tradeDate: autoDate, luckyTrinket: selectedLuckyTrinket, luckyTrinketCycleId: deleteField() });
+                }
+                document.getElementById('tradeModal').classList.add('hidden'); clearSearch();
+            } catch (error) {
+                const messages = { TRINKET_SYNCING: '首飾資料同步中，請稍後再試', NO_TRINKET_CYCLE: '目前未設定 GO Pass 首飾週期，暫時無法使用「我出首飾」', TRINKET_CONFLICT: '此帳號本期 GO Pass 首飾已預約或使用，無法重複出售', INVENTORY_CHANGED: '這筆現貨已經變更，請重新整理後再試。' };
+                alert(messages[error.message] || '安排交換失敗，請檢查網路後再試一次。');
+            } finally {
+                isConfirmingTrade = false; confirmTradeBtn.disabled = false; confirmTradeBtn.textContent = '確認排隊';
+            }
         });
 
         luckyTrinketBuyerBtn.addEventListener('click', () => setLuckyTrinketSelection(selectedLuckyTrinket === 'buyer' ? null : 'buyer'));
-        luckyTrinketSellerBtn.addEventListener('click', () => setLuckyTrinketSelection(selectedLuckyTrinket === 'seller' ? null : 'seller'));
+        luckyTrinketSellerBtn.addEventListener('click', () => {
+            if (luckyTrinketSellerBtn.disabled) return;
+            setLuckyTrinketSelection(selectedLuckyTrinket === 'seller' ? null : 'seller');
+        });
         editLuckyTrinketBuyerBtn.addEventListener('click', () => setEditingLuckyTrinketSelection(editingLuckyTrinket === 'buyer' ? null : 'buyer'));
         editLuckyTrinketSellerBtn.addEventListener('click', () => setEditingLuckyTrinketSelection(editingLuckyTrinket === 'seller' ? null : 'seller'));
         cancelEditTradeBtn.addEventListener('click', () => editTradeModal.classList.add('hidden'));
+
+        async function updateLuckyTrinketTrade(localItem, partner, nextTrinket) {
+            const inventoryRef = doc(db, 'inventory', localItem.id);
+            await runTransaction(db, async transaction => {
+                const snapshot = await transaction.get(inventoryRef);
+                if (!snapshot.exists() || snapshot.data().status !== 'trading') throw new Error('INVENTORY_CHANGED');
+                const item = { id: localItem.id, ...snapshot.data() };
+                const wasSeller = normalizeLuckyTrinket(item.luckyTrinket) === 'seller';
+                const willBeSeller = nextTrinket === 'seller';
+                let cycleId = wasSeller ? item.luckyTrinketCycleId : null;
+                if (willBeSeller && !cycleId) {
+                    const cycle = getLuckyTrinketCycleForDate(getTodayStr());
+                    if (!cycle) throw new Error('NO_TRINKET_CYCLE');
+                    cycleId = cycle.id;
+                }
+                let lockRef = null; let lockSnapshot = null;
+                if (wasSeller && item.luckyTrinketCycleId) {
+                    lockRef = getLuckyTrinketCycleLockRef(item.account, item.luckyTrinketCycleId);
+                    lockSnapshot = await transaction.get(lockRef);
+                } else if (willBeSeller) {
+                    lockRef = getLuckyTrinketCycleLockRef(item.account, cycleId);
+                    lockSnapshot = await transaction.get(lockRef);
+                }
+                if (willBeSeller) {
+                    if (lockSnapshot?.exists() && isActiveLuckyTrinketCycleLock(lockSnapshot.data()) && lockSnapshot.data().inventoryId !== item.id) throw new Error('TRINKET_CONFLICT');
+                    const now = Date.now();
+                    if (!lockSnapshot?.exists()) transaction.set(lockRef, { cycleId, account: item.account, inventoryId: item.id, state: 'reserved', reservedAt: now, usedAt: null, updatedAt: now, source: 'runtime' });
+                    transaction.update(inventoryRef, { partner, luckyTrinket: 'seller', luckyTrinketCycleId: cycleId });
+                } else {
+                    if (lockSnapshot?.exists() && lockSnapshot.data().state === 'reserved' && lockSnapshot.data().inventoryId === item.id) transaction.delete(lockRef);
+                    transaction.update(inventoryRef, { partner, luckyTrinket: nextTrinket, luckyTrinketCycleId: deleteField() });
+                }
+            });
+        }
+
         saveEditTradeBtn.addEventListener('click', async () => {
             const partner = editTradePartnerInput.value.trim();
             if (!partner) return alert("輸入買家");
@@ -1081,11 +1269,12 @@
                 editTradeModal.classList.add('hidden');
                 return;
             }
-            await updateDoc(doc(db, "inventory", editingTradeId), {
-                partner,
-                luckyTrinket: editingLuckyTrinket
-            });
-            editTradeModal.classList.add('hidden');
+            try {
+                await updateLuckyTrinketTrade(item, partner, editingLuckyTrinket);
+                editTradeModal.classList.add('hidden');
+            } catch (error) {
+                alert(error.message === 'TRINKET_CONFLICT' ? '此帳號本期 GO Pass 首飾已預約或使用，無法重複出售' : error.message === 'NO_TRINKET_CYCLE' ? '目前未設定 GO Pass 首飾週期，暫時無法使用「我出首飾」' : '編輯交換失敗，請稍後再試。');
+            }
         });
 
         cancelEditStockBtn.addEventListener('click', () => editStockModal.classList.add('hidden'));
@@ -1243,8 +1432,28 @@
         
         window.updateStatus = async (id, status) => {
             const item = pokemons.find(p => p.id === id);
-            const updates = status === 'done' ? { status: 'done', completedAt: Date.now() } : { status };
-            await updateDoc(doc(db, "inventory", id), updates);
+            if (status === 'done' && normalizeLuckyTrinket(item?.luckyTrinket) === 'seller') {
+                const inventoryRef = doc(db, 'inventory', id);
+                await runTransaction(db, async transaction => {
+                    const snapshot = await transaction.get(inventoryRef);
+                    if (!snapshot.exists() || snapshot.data().status !== 'trading') throw new Error('INVENTORY_CHANGED');
+                    const current = { id, ...snapshot.data() };
+                    let cycleId = current.luckyTrinketCycleId;
+                    const rolloutCycle = LUCKY_TRINKET_CYCLES.find(cycle => cycle.id === LEGACY_LUCKY_TRINKET_ROLLOUT_CYCLE_ID);
+                    if (!cycleId && isLegacySellerRecordRelevantToCycle(current, rolloutCycle)) cycleId = rolloutCycle.id;
+                    if (!cycleId) throw new Error('無法判定舊首飾交換所屬週期');
+                    const lockRef = getLuckyTrinketCycleLockRef(current.account, cycleId);
+                    const lockSnapshot = await transaction.get(lockRef);
+                    if (lockSnapshot.exists() && lockSnapshot.data().inventoryId !== id) throw new Error('首飾鎖屬於其他交換，無法完成');
+                    const now = Date.now();
+                    const reservedAt = lockSnapshot.exists() ? lockSnapshot.data().reservedAt || now : now;
+                    transaction.set(lockRef, { cycleId, account: current.account, inventoryId: id, state: 'used', reservedAt, usedAt: now, updatedAt: now, source: lockSnapshot.exists() ? lockSnapshot.data().source || 'runtime' : 'legacy-rollout-backfill' });
+                    transaction.update(inventoryRef, { status: 'done', completedAt: now, luckyTrinketCycleId: cycleId });
+                });
+            } else {
+                const updates = status === 'done' ? { status: 'done', completedAt: Date.now() } : { status };
+                await updateDoc(doc(db, "inventory", id), updates);
+            }
             if (status === 'done' && item) {
                 setTimeout(() => window.repackSchedule(item.account), 800);
             }
@@ -1261,11 +1470,19 @@
             if (!confirmed) return;
 
             try {
-                await updateDoc(doc(db, "inventory", item.id), {
-                    status: 'stock',
-                    partner: '',
-                    tradeDate: '',
-                    completedAt: deleteField()
+                await runTransaction(db, async transaction => {
+                    const inventoryRef = doc(db, 'inventory', item.id);
+                    const snapshot = await transaction.get(inventoryRef);
+                    if (!snapshot.exists()) throw new Error('INVENTORY_CHANGED');
+                    const current = { id: item.id, ...snapshot.data() };
+                    if (current.status === 'trading' && normalizeLuckyTrinket(current.luckyTrinket) === 'seller' && current.luckyTrinketCycleId) {
+                        const lockRef = getLuckyTrinketCycleLockRef(current.account, current.luckyTrinketCycleId);
+                        const lockSnapshot = await transaction.get(lockRef);
+                        if (lockSnapshot.exists() && lockSnapshot.data().state === 'reserved' && lockSnapshot.data().inventoryId === current.id) transaction.delete(lockRef);
+                    }
+                    const updates = { status: 'stock', partner: '', tradeDate: '', completedAt: deleteField() };
+                    if (current.status === 'trading') { updates.luckyTrinket = deleteField(); updates.luckyTrinketCycleId = deleteField(); }
+                    transaction.update(inventoryRef, updates);
                 });
             } catch (error) {
                 console.error('恢復在庫失敗：', error);
@@ -1284,7 +1501,18 @@
         window.deleteItem = async (id) => { 
             const item = pokemons.find(p => p.id === id);
             if(confirm('確定刪除項目？')) {
-                await deleteDoc(doc(db, "inventory", id)); 
+                await runTransaction(db, async transaction => {
+                    const inventoryRef = doc(db, 'inventory', id);
+                    const snapshot = await transaction.get(inventoryRef);
+                    if (!snapshot.exists()) return;
+                    const current = { id, ...snapshot.data() };
+                    if (current.status === 'trading' && normalizeLuckyTrinket(current.luckyTrinket) === 'seller' && current.luckyTrinketCycleId) {
+                        const lockRef = getLuckyTrinketCycleLockRef(current.account, current.luckyTrinketCycleId);
+                        const lockSnapshot = await transaction.get(lockRef);
+                        if (lockSnapshot.exists() && lockSnapshot.data().state === 'reserved' && lockSnapshot.data().inventoryId === id) transaction.delete(lockRef);
+                    }
+                    transaction.delete(inventoryRef);
+                });
                 if (item && item.status === 'trading') {
                     setTimeout(() => window.repackSchedule(item.account), 800);
                 }

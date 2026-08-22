@@ -40,7 +40,7 @@ test('arrange modal exposes optional mutually exclusive lucky-trinket controls',
 
 test('opening and saving an arranged trade resets and persists the single selection', () => {
     assert.match(script, /window\.openTrade = \(id, accName\) => \{[\s\S]*?partnerInput'\)\.value = '';[\s\S]*?setLuckyTrinketSelection\(null\);/);
-    assert.match(script, /updateDoc\(doc\(db, "inventory", selectedId\), \{ status: 'trading', partner, tradeDate: autoDate, luckyTrinket: selectedLuckyTrinket \}\)/);
+    assert.match(script, /transaction\.update\(inventoryRef, \{ status: 'trading', partner, tradeDate: autoDate, luckyTrinket: 'seller', luckyTrinketCycleId: cycle\.id \}\)/);
 });
 
 test('formatters ignore legacy values and both render locations use their labels', () => {
@@ -74,9 +74,10 @@ test('Lucky Trinket account display names contain at most the first six characte
 
 test('account availability uses exact full names, all statuses, and seller trinkets only', () => {
     const normalizeSource = extractFunction('normalizeLuckyTrinket');
+    const helpers = ['getLuckyTrinketCycleLockKey', 'isActiveLuckyTrinketCycleLock', 'timestampToLocalDate', 'isLegacySellerRecordRelevantToCycle'].map(extractFunction).join(';');
     const availabilitySource = extractFunction('accountHasLuckyTrinket');
     const rowsSource = extractFunction('getLuckyTrinketAccountRows');
-    const getRows = Function(`${normalizeSource}; ${availabilitySource}; ${rowsSource}; return getLuckyTrinketAccountRows;`)();
+    const getRows = Function(`const LEGACY_LUCKY_TRINKET_ROLLOUT_CYCLE_ID='2026-08-go-pass'; ${normalizeSource}; ${helpers}; ${availabilitySource}; ${rowsSource}; return (a,i)=>getLuckyTrinketAccountRows(a,i,{id:'2026-08-go-pass',startDate:'2026-08-04',endDate:'2026-09-08'},new Map());`)();
     const accounts = [
         { name: 'abcdef111111' },
         { name: 'abcdef222222' },
@@ -85,8 +86,8 @@ test('account availability uses exact full names, all statuses, and seller trink
         { name: 'accountA' }
     ];
     const inventory = [
-        { account: 'abcdef111111', status: 'legacy-status', luckyTrinket: 'seller' },
-        { account: 'accountA', status: 'trading', luckyTrinket: 'seller' },
+        { account: 'abcdef111111', status: 'done', tradeDate: '2026-08-05', luckyTrinket: 'seller' },
+        { account: 'accountA', status: 'trading', tradeDate: '2026-08-06', luckyTrinket: 'seller' },
         { account: 'accountB', status: 'trading', luckyTrinket: 'buyer' }
     ];
 
@@ -100,10 +101,11 @@ test('account availability uses exact full names, all statuses, and seller trink
 
 test('shared account availability helper is safe for viewer and stock-copy reuse', () => {
     const normalizeSource = extractFunction('normalizeLuckyTrinket');
+    const helpers = ['getLuckyTrinketCycleLockKey', 'isActiveLuckyTrinketCycleLock', 'timestampToLocalDate', 'isLegacySellerRecordRelevantToCycle'].map(extractFunction).join(';');
     const availabilitySource = extractFunction('accountHasLuckyTrinket');
-    const accountHasLuckyTrinket = Function(`${normalizeSource}; ${availabilitySource}; return accountHasLuckyTrinket;`)();
+    const accountHasLuckyTrinket = Function(`const LEGACY_LUCKY_TRINKET_ROLLOUT_CYCLE_ID='2026-08-go-pass'; ${normalizeSource}; ${helpers}; ${availabilitySource}; return (a,i)=>accountHasLuckyTrinket(a,i,{id:'2026-08-go-pass',startDate:'2026-08-04',endDate:'2026-09-08'},new Map());`)();
     const items = [
-        { account: 'seller-account', status: 'done', luckyTrinket: 'seller' },
+        { account: 'seller-account', status: 'done', tradeDate: '2026-08-05', luckyTrinket: 'seller' },
         { account: 'buyer-account', status: 'trading', luckyTrinket: 'buyer' },
         { account: 'invalid-account', status: 'legacy', luckyTrinket: 'unknown' }
     ];
