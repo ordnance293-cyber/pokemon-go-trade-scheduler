@@ -368,6 +368,19 @@
             return String(account || '').slice(0, 6);
         }
 
+        function accountHasLuckyTrinket(accountName, inventoryItems) {
+            return !inventoryItems.some(item =>
+                item?.account === accountName && normalizeLuckyTrinket(item?.luckyTrinket) === 'seller'
+            );
+        }
+
+        function buildStockCopyAccountHeader(accountName, inventoryItems) {
+            const availabilityLabel = accountHasLuckyTrinket(accountName, inventoryItems)
+                ? '🟢 有首飾'
+                : '🔴 無首飾';
+            return `【${getLuckyTrinketAccountDisplayName(accountName)}｜${availabilityLabel}】`;
+        }
+
         function getLuckyTrinketAccountRows(accounts, inventoryItems) {
             const seenNames = new Set();
             const rows = [];
@@ -376,9 +389,7 @@
                 const name = account?.name;
                 if (typeof name !== 'string' || name === '' || seenNames.has(name)) return;
                 seenNames.add(name);
-                const hasTrinket = !inventoryItems.some(item =>
-                    item?.account === name && normalizeLuckyTrinket(item?.luckyTrinket) === 'seller'
-                );
+                const hasTrinket = accountHasLuckyTrinket(name, inventoryItems);
                 rows.push({ account: name, hasTrinket });
             });
 
@@ -511,7 +522,7 @@
             return prices.every(price => /^[1-9]\d*$/.test(price)) ? prices.map(Number) : null;
         }
 
-        function buildStockCopyLines(groups, prices = null) {
+        function buildStockCopyLines(groups, prices = null, inventoryItems = []) {
             if (!groups.length) return '目前無現貨寶可夢。';
 
             const hasAccountSections = groups.every(group =>
@@ -541,7 +552,7 @@
                     priceIndex += 1;
                     return `🔥 ${stockLabel}${priceLabel}`;
                 });
-                return `【${account.slice(0, 6)}】\n${lines.join('\n')}`;
+                return `${buildStockCopyAccountHeader(account, inventoryItems)}\n${lines.join('\n')}`;
             }).join('\n\n');
         }
 
@@ -563,14 +574,14 @@
             return body ? `${preamble}\n\n${body}` : preamble;
         }
 
-        function getCopyPriceResult(groups, text) {
+        function getCopyPriceResult(groups, text, inventoryItems = []) {
             if (!groups.length) return { ok: false, message: '目前沒有現貨文案可套用價格' };
             const prices = parseCopyPrices(text);
             if (!prices) return { ok: false, message: '價格格式錯誤，請輸入正整數並以空格、逗號或換行分隔' };
             if (prices.length !== groups.length) {
                 return { ok: false, message: `需要 ${groups.length} 個價格，目前${prices.length < groups.length ? '只有' : '有'} ${prices.length} 個` };
             }
-            return { ok: true, text: buildStockCopyLines(groups, prices) };
+            return { ok: true, text: buildStockCopyLines(groups, prices, inventoryItems) };
         }
 
         function formatCompletedAt(item) {
@@ -1223,7 +1234,7 @@
             currentCopyGroups = Array.from(groups.values());
             document.getElementById('copyPriceInput').value = '';
             document.getElementById('copyPriceMessage').textContent = '';
-            document.getElementById('copyTextarea').value = buildStockCopyLines(currentCopyGroups);
+            document.getElementById('copyTextarea').value = buildStockCopyLines(currentCopyGroups, null, pokemons);
             document.getElementById('copyModal').classList.remove('hidden');
         });
 
@@ -1233,7 +1244,7 @@
         insertPriceSeparatorBtn.addEventListener('click', () => insertPriceSeparator(copyPriceInput));
 
         document.getElementById('applyCopyPricesBtn').addEventListener('click', () => {
-            const result = getCopyPriceResult(currentCopyGroups, document.getElementById('copyPriceInput').value);
+            const result = getCopyPriceResult(currentCopyGroups, document.getElementById('copyPriceInput').value, pokemons);
             const message = document.getElementById('copyPriceMessage');
             message.textContent = result.ok ? '價格已套用' : result.message;
             message.classList.toggle('text-red-600', !result.ok);
