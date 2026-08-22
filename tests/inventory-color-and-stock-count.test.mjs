@@ -24,7 +24,7 @@ function functionSource(name) {
 }
 
 function loadHelpers() {
-    const names = ['normalizeInventoryYear', 'normalizeColorType', 'normalizeBackCardType', 'formatInventoryMetadata', 'formatInventoryCopyText', 'getInventoryGroupingKey', 'getStockInventoryCount', 'parseCopyPrices', 'buildStockCopyLines', 'getCopyPriceResult', 'insertPriceSeparator'];
+    const names = ['normalizeInventoryYear', 'normalizeColorType', 'normalizeBackCardType', 'formatInventoryMetadata', 'formatInventoryCopyText', 'getInventoryGroupingKey', 'getStockInventoryCount', 'parseCopyPrices', 'buildStockCopyLines', 'getStockCopyPreamble', 'buildFullStockCopyText', 'getCopyPriceResult', 'insertPriceSeparator'];
     const source = names.map(functionSource).join('\n');
     return vm.runInNewContext(`(() => { ${source}; return { ${names.join(',')} }; })()`);
 }
@@ -96,6 +96,69 @@ test('copy modal count uses the same effective pokemons snapshot', () => {
     assert.match(handler, /const stockItems = pokemons\.filter\(p => p\.status === 'stock'\)/);
     assert.doesNotMatch(handler, /syncedPokemons/);
     assert.match(handler, /copyStockCount'\)\.textContent = `總庫存：\$\{getStockInventoryCount\(stockItems\)\} 隻`/);
+});
+
+test('copy modal shows the fixed sales notice between its stock count and price input', () => {
+    const stockCountIndex = html.indexOf('id="copyStockCount"');
+    const noticeIndex = html.indexOf('id="copyNoticeBox"');
+    const priceInputIndex = html.indexOf('id="copyPriceInput"');
+    assert.notEqual(noticeIndex, -1, 'copyNoticeBox should exist');
+    assert.ok(stockCountIndex < noticeIndex, 'notice should follow copyStockCount');
+    assert.ok(noticeIndex < priceInputIndex, 'notice should precede copyPriceInput');
+
+    const notice = html.match(/<div[^>]*id="copyNoticeBox"[^>]*>([\s\S]*?)<\/div>/)?.[1];
+    assert.ok(notice);
+    for (const exactText of [
+        '出售一些色違裝扮,背卡寶可夢',
+        '⚠️ 注意事項',
+        '✨ 首飾 +200',
+        '✨ 亮晶晶寶可夢 +50',
+        '付款方式 ✅Linepay ✅8591實收'
+    ]) assert.match(notice, new RegExp(exactText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('stock copy preamble has the exact fixed sales information', () => {
+    const { getStockCopyPreamble } = loadHelpers();
+    assert.equal(
+        getStockCopyPreamble(),
+        '出售一些色違裝扮,背卡寶可夢\n\n⚠️ 注意事項\n✨ 首飾 +200\n✨ 亮晶晶寶可夢 +50\n付款方式 ✅Linepay ✅8591實收'
+    );
+});
+
+test('full stock copy adds one preamble and exactly one blank line before the body', () => {
+    const { getStockCopyPreamble, buildFullStockCopyText } = loadHelpers();
+    const body = '【帳號前6碼】\n🔥 寶可夢文案';
+    const expected = `${getStockCopyPreamble()}\n\n${body}`;
+    assert.equal(buildFullStockCopyText(body), expected);
+    assert.equal(buildFullStockCopyText(expected), expected);
+    assert.equal(buildFullStockCopyText(`\r\n${expected}\r\n`), expected);
+    assert.equal(buildFullStockCopyText('  '), getStockCopyPreamble());
+    assert.equal(expected.match(/出售一些色違裝扮,背卡寶可夢/g)?.length, 1);
+    assert.doesNotMatch(expected, /\n$/);
+});
+
+test('priced stock remains body-only and full copy wraps it once when prices are reapplied', () => {
+    const { getCopyPriceResult, buildFullStockCopyText } = loadHelpers();
+    const groups = [{ account: 'abcdef123456', label: '寶可夢文案', quantity: 1 }];
+    const first = getCopyPriceResult(groups, '450').text;
+    assert.equal(first, '【abcdef】\n🔥 寶可夢文案｜1隻450元');
+    assert.doesNotMatch(first, /出售一些/);
+    assert.equal(
+        buildFullStockCopyText(first),
+        '出售一些色違裝扮,背卡寶可夢\n\n⚠️ 注意事項\n✨ 首飾 +200\n✨ 亮晶晶寶可夢 +50\n付款方式 ✅Linepay ✅8591實收\n\n【abcdef】\n🔥 寶可夢文案｜1隻450元'
+    );
+    const reapplied = buildFullStockCopyText(getCopyPriceResult(groups, '500').text);
+    assert.equal(reapplied.match(/出售一些色違裝扮,背卡寶可夢/g)?.length, 1);
+    assert.match(reapplied, /🔥 寶可夢文案｜1隻500元$/);
+});
+
+test('copy button builds the full clipboard text without mutating the textarea', () => {
+    const handler = moduleScript.slice(
+        moduleScript.indexOf("document.getElementById('doCopyBtn').addEventListener"),
+        moduleScript.indexOf('function setupFilterCopyButton')
+    );
+    assert.match(handler, /navigator\.clipboard\.writeText\(buildFullStockCopyText\(document\.getElementById\('copyTextarea'\)\.value\)\)/);
+    assert.doesNotMatch(handler, /copyTextarea'\)\.value\s*=/);
 });
 
 test('stock copy prefixes grouped lines while preserving quantity and the empty message', () => {

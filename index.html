@@ -254,9 +254,16 @@
     </div>
 
     <div id="copyModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div class="bg-white p-6 rounded-3xl shadow-2xl w-full max-w-[400px]">
+        <div class="bg-white p-6 rounded-3xl shadow-2xl w-full max-w-[400px] max-h-[90vh] overflow-y-auto">
             <h2 class="text-xl font-black text-gray-800 tracking-tight text-center">📝 現貨文案</h2>
-            <p id="copyStockCount" class="mb-4 mt-1 text-center text-sm font-bold text-purple-600">總庫存：0 隻</p>
+            <p id="copyStockCount" class="mt-1 text-center text-sm font-bold text-purple-600">總庫存：0 隻</p>
+            <div id="copyNoticeBox" class="my-4 rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm leading-relaxed">
+                <p class="font-bold text-orange-900">出售一些色違裝扮,背卡寶可夢</p>
+                <p class="mt-3 font-bold text-orange-600">⚠️ 注意事項</p>
+                <p class="mt-1 font-bold text-fuchsia-600">✨ 首飾 +200</p>
+                <p class="font-bold text-fuchsia-600">✨ 亮晶晶寶可夢 +50</p>
+                <p class="mt-2 text-gray-700">付款方式 ✅Linepay ✅8591實收</p>
+            </div>
             <textarea id="copyPriceInput" rows="2" inputmode="numeric" placeholder="例如：450 350 400" class="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-400 outline-none text-sm resize-none text-gray-700"></textarea>
             <div class="flex gap-2 mt-2 mb-1">
                 <button id="insertPriceSeparatorBtn" type="button" class="min-h-11 flex-[1] bg-gray-100 text-gray-700 py-2 rounded-xl font-black hover:bg-gray-200 active:scale-95 shadow-sm text-lg transition-all" aria-label="插入逗號">,</button>
@@ -474,6 +481,24 @@
                 });
                 return `【${account.slice(0, 6)}】\n${lines.join('\n')}`;
             }).join('\n\n');
+        }
+
+        function getStockCopyPreamble() {
+            return [
+                '出售一些色違裝扮,背卡寶可夢',
+                '',
+                '⚠️ 注意事項',
+                '✨ 首飾 +200',
+                '✨ 亮晶晶寶可夢 +50',
+                '付款方式 ✅Linepay ✅8591實收'
+            ].join('\n');
+        }
+
+        function buildFullStockCopyText(bodyText) {
+            const preamble = getStockCopyPreamble();
+            let body = String(bodyText ?? '').replace(/\r\n/g, '\n').trim();
+            if (body.startsWith(preamble)) body = body.slice(preamble.length).trim();
+            return body ? `${preamble}\n\n${body}` : preamble;
         }
 
         function getCopyPriceResult(groups, text) {
@@ -1162,8 +1187,7 @@
         });
 
         document.getElementById('doCopyBtn').addEventListener('click', (e) => {
-            const text = document.getElementById('copyTextarea').value;
-            navigator.clipboard.writeText(text);
+            navigator.clipboard.writeText(buildFullStockCopyText(document.getElementById('copyTextarea').value));
             const btn = e.target;
             const old = btn.innerText;
             btn.innerText = '已複製！';
