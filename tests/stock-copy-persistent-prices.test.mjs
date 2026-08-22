@@ -54,15 +54,64 @@ test('saved lookup supports partial prices and independent accounts', () => {
     assert.deepEqual(Array.from(getSavedCopyPrices(groups.slice(0, 2), new Map([[groups[0].priceKey, 350], [groups[1].priceKey, 400]]))), [350, 400]);
 });
 
-test('missing targets and batch mapping are ordered and validate exact count', () => {
+test('missing-price batches map any positive number of prices to the first displayed targets', () => {
     const { getMissingCopyPriceTargets, getCopyPriceBatchResult } = helpers();
-    const groups = [group('A', 'A'), group('B', 'B'), group('C', 'C')];
+    const groups = ['A', 'B', 'C', 'D', 'E'].map(name => group(name, name));
     const targets = getMissingCopyPriceTargets(groups, new Map());
-    assert.deepEqual(Array.from(targets, x => x.account), ['A', 'B', 'C']);
-    assert.deepEqual(Array.from(getCopyPriceBatchResult(targets, '450 350 400').entries, entry => [entry.group.account, entry.price]), [
-        ['A', 450], ['B', 350], ['C', 400]
+    assert.deepEqual(Array.from(targets, x => x.account), ['A', 'B', 'C', 'D', 'E']);
+    assert.deepEqual(Array.from(getCopyPriceBatchResult(targets, '100 200').entries, entry => [entry.group.account, entry.price]), [
+        ['A', 100], ['B', 200]
     ]);
-    assert.deepEqual({ ...getCopyPriceBatchResult(targets, '450 350') }, { ok: false, message: '需要 3 個價格，目前只有 2 個' });
+    assert.deepEqual(Array.from(getCopyPriceBatchResult(targets, '500').entries, entry => [entry.group.account, entry.price]), [['A', 500]]);
+    assert.equal(getCopyPriceBatchResult(targets, '100 200 300 400 500').entries.length, 5);
+});
+
+test('missing-price batches reject empty, malformed, and excess input without entries', () => {
+    const { getCopyPriceBatchResult } = helpers();
+    const targets = ['A', 'B', 'C', 'D', 'E'].map(name => group(name, name));
+    assert.deepEqual({ ...getCopyPriceBatchResult(targets, '') }, { ok: false, message: '請至少輸入 1 個價格' });
+    assert.deepEqual({ ...getCopyPriceBatchResult(targets, '1 2 3 4 5 6') }, { ok: false, message: '尚未設定價格只有 5 項，目前輸入 6 個' });
+    const malformed = getCopyPriceBatchResult(targets, '100 nope 200');
+    assert.equal(malformed.ok, false);
+    assert.equal('entries' in malformed, false);
+});
+
+test('partial batches produce only submitted writes and leave saved and remaining targets untouched', () => {
+    const { getMissingCopyPriceTargets, getCopyPriceBatchResult } = helpers();
+    const groups = ['A', 'B', 'C', 'D', 'E'].map(name => group(name, name));
+    const prices = new Map([[groups[2].priceKey, 999]]);
+    const targets = getMissingCopyPriceTargets(groups, prices);
+    const firstBatch = getCopyPriceBatchResult(targets, '100 200');
+    assert.equal(firstBatch.entries.length, 2, 'Firestore batch should receive exactly two writes');
+    firstBatch.entries.forEach(entry => prices.set(entry.group.priceKey, entry.price));
+    assert.equal(prices.get(groups[2].priceKey), 999);
+    assert.deepEqual(Array.from(getMissingCopyPriceTargets(groups, prices), x => x.account), ['D', 'E']);
+});
+
+test('repeated partial batches recalculate the missing order', () => {
+    const { getMissingCopyPriceTargets, getCopyPriceBatchResult } = helpers();
+    const groups = ['A', 'B', 'C', 'D'].map(name => group(name, name));
+    const prices = new Map();
+    for (const entry of getCopyPriceBatchResult(getMissingCopyPriceTargets(groups, prices), '100 200').entries) prices.set(entry.group.priceKey, entry.price);
+    for (const entry of getCopyPriceBatchResult(getMissingCopyPriceTargets(groups, prices), '300').entries) prices.set(entry.group.priceKey, entry.price);
+    assert.deepEqual(groups.map(group => prices.get(group.priceKey)), [100, 200, 300, undefined]);
+    assert.deepEqual(Array.from(getMissingCopyPriceTargets(groups, prices), x => x.account), ['D']);
+});
+
+test('partial rendering prices saved products without adding a suffix to missing products', () => {
+    const { getSavedCopyPrices, buildStockCopyLines } = helpers();
+    const groups = ['A', 'B', 'C'].map(name => group(name, name));
+    const output = buildStockCopyLines(groups, getSavedCopyPrices(groups, new Map([[groups[0].priceKey, 100], [groups[1].priceKey, 200]])));
+    assert.match(output, /異色特別背卡A｜1隻100元/);
+    assert.match(output, /異色特別背卡B｜1隻200元/);
+    assert.match(output, /🔥 異色特別背卡C(?:\n|$)/);
+});
+
+test('all-price edit mode remains exact-count only', () => {
+    const { getCopyPriceBatchResult } = helpers();
+    const targets = ['A', 'B', 'C'].map(name => group(name, name));
+    assert.deepEqual({ ...getCopyPriceBatchResult(targets, '100 200', true) }, { ok: false, message: '需要 3 個價格，目前只有 2 個' });
+    assert.equal(getCopyPriceBatchResult(targets, '100 200 300', true).entries.length, 3);
 });
 
 test('new products alone are missing, sold-out cache remains reusable, and quantity shares unit price', () => {
