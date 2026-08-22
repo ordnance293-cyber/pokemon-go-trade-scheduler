@@ -250,6 +250,23 @@
         </div>
     </div>
 
+    <div id="singleStockPriceModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+        <div class="bg-white p-6 rounded-3xl shadow-2xl w-full max-w-[320px] max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="singleStockPriceModalTitle">
+            <h2 id="singleStockPriceModalTitle" class="text-xl font-black text-gray-800 tracking-tight text-center">💰 修改價格</h2>
+            <div class="mt-4 rounded-2xl bg-gray-50 px-4 py-3 text-sm font-bold leading-relaxed">
+                <p class="text-gray-500">帳號：<span id="singleStockPriceAccount" class="text-gray-800"></span></p>
+                <p class="mt-1 text-gray-500">商品：<span id="singleStockPriceProduct" class="text-gray-800"></span></p>
+            </div>
+            <label for="singleStockPriceInput" class="mt-4 block text-sm font-bold text-gray-700">價格</label>
+            <input id="singleStockPriceInput" type="text" inputmode="numeric" autocomplete="off" class="mt-2 w-full rounded-2xl border border-gray-200 p-3 text-center text-base font-bold outline-none focus:ring-2 focus:ring-emerald-400">
+            <p id="singleStockPriceMessage" class="min-h-5 mt-2 text-sm font-bold text-red-600" role="alert" aria-live="polite"></p>
+            <div class="flex gap-2 mt-3">
+                <button id="cancelSingleStockPriceBtn" type="button" class="min-h-11 flex-1 py-2 text-gray-400 font-bold text-sm">取消</button>
+                <button id="saveSingleStockPriceBtn" type="button" class="min-h-11 flex-[2] bg-emerald-600 text-white py-2 rounded-2xl font-bold active:scale-95 shadow-md text-sm transition-all disabled:opacity-50">儲存價格</button>
+            </div>
+        </div>
+    </div>
+
     <div id="copyModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div class="bg-white p-6 rounded-3xl shadow-2xl w-full max-w-[400px] max-h-[90vh] overflow-y-auto">
             <h2 class="text-xl font-black text-gray-800 tracking-tight text-center">📝 現貨文案</h2>
@@ -340,6 +357,9 @@
         let currentCopyGroups = [];
         let stockCopyPriceMap = new Map();
         let editingAllCopyPrices = false;
+        let editingStockPriceItemId = null;
+        let editingStockPriceKey = null;
+        let isSavingSingleStockPrice = false;
         const pendingInventoryItems = new Map();
         const failedInventoryItemIds = new Set();
         const searchInput = document.getElementById('searchInput');
@@ -367,6 +387,14 @@
         const editStockBackCardSelect = document.getElementById('editStockBackCardSelect');
         const cancelEditStockBtn = document.getElementById('cancelEditStockBtn');
         const saveEditStockBtn = document.getElementById('saveEditStockBtn');
+        const singleStockPriceModal = document.getElementById('singleStockPriceModal');
+        const singleStockPriceAccount = document.getElementById('singleStockPriceAccount');
+        const singleStockPriceProduct = document.getElementById('singleStockPriceProduct');
+        const singleStockPriceInput = document.getElementById('singleStockPriceInput');
+        const singleStockPriceMessage = document.getElementById('singleStockPriceMessage');
+        const cancelSingleStockPriceBtn = document.getElementById('cancelSingleStockPriceBtn');
+        const saveSingleStockPriceBtn = document.getElementById('saveSingleStockPriceBtn');
+        const copyModal = document.getElementById('copyModal');
         let pendingCompleteId = null;
         let isCompleting = false;
 
@@ -534,6 +562,13 @@
 
         function isValidStockCopyPrice(value) {
             return Number.isInteger(value) && value > 0;
+        }
+
+        function parseSingleStockPrice(text) {
+            const value = String(text ?? '').trim();
+            if (!/^[1-9]\d*$/.test(value)) return null;
+            const price = Number(value);
+            return isValidStockCopyPrice(price) ? price : null;
         }
 
         function getStockItemSavedPrice(item, priceMap) {
@@ -1178,7 +1213,8 @@
                     const priceClasses = price === undefined
                         ? 'bg-amber-50 text-amber-700 border-amber-200'
                         : 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                    stockPriceMarkup = `<span class="mt-1.5 w-fit rounded-lg border px-2 py-0.5 text-xs font-bold ${priceClasses}">${priceLabel}</span>`;
+                    const priceAriaLabel = price === undefined ? '設定價格' : `修改價格：${price}元`;
+                    stockPriceMarkup = `<button type="button" onclick="openSingleStockPriceEditor('${p.id}')" aria-label="${priceAriaLabel}" class="mt-1.5 min-h-8 w-fit rounded-lg border px-2 py-1 text-xs font-bold active:scale-95 ${priceClasses}">${priceLabel}</button>`;
                     const isFastest = (searchText !== '' && p.nextDateStr === fastestDate);
                     if (isFastest) {
                         tag = `<div class="flex items-center gap-1.5"><span class="text-blue-500 text-[9px] md:text-[10px] font-black bg-blue-50 px-2 py-0.5 rounded border border-blue-100 shrink-0">在庫</span><span class="text-red-600 text-[9px] md:text-[10px] font-black bg-red-50 px-2 py-0.5 rounded border border-red-200 shadow-sm shrink-0">🔥 推薦最快: ${p.nextDateStr}</span></div>`;
@@ -1305,6 +1341,83 @@
         function getCopyPriceTargetLabel(group, index) {
             return `${index + 1}. 【${getLuckyTrinketAccountDisplayName(group.account)}】${group.label}`;
         }
+
+        function closeSingleStockPriceEditor() {
+            singleStockPriceModal.classList.add('hidden');
+            editingStockPriceItemId = null;
+            editingStockPriceKey = null;
+            singleStockPriceMessage.textContent = '';
+        }
+
+        window.openSingleStockPriceEditor = (id) => {
+            const item = pokemons.find(p => p.id === id);
+            if (!item || item.status !== 'stock') return;
+            const priceKey = getInventoryGroupingKey(item);
+            const currentPrice = stockCopyPriceMap.get(priceKey);
+            editingStockPriceItemId = id;
+            editingStockPriceKey = priceKey;
+            singleStockPriceAccount.textContent = getLuckyTrinketAccountDisplayName(item.account);
+            singleStockPriceProduct.textContent = formatInventoryCopyText(item);
+            singleStockPriceInput.value = isValidStockCopyPrice(currentPrice) ? String(currentPrice) : '';
+            singleStockPriceMessage.textContent = '';
+            singleStockPriceModal.classList.remove('hidden');
+            requestAnimationFrame(() => {
+                singleStockPriceInput.focus();
+                singleStockPriceInput.select();
+            });
+        };
+
+        document.getElementById('cancelSingleStockPriceBtn').addEventListener('click', closeSingleStockPriceEditor);
+        singleStockPriceModal.addEventListener('click', event => {
+            if (event.target === singleStockPriceModal && !isSavingSingleStockPrice) closeSingleStockPriceEditor();
+        });
+
+        document.getElementById('saveSingleStockPriceBtn').addEventListener('click', async () => {
+            if (isSavingSingleStockPrice) return;
+            const price = parseSingleStockPrice(singleStockPriceInput.value);
+            if (price === null) {
+                singleStockPriceMessage.textContent = '請輸入有效的正整數價格';
+                return;
+            }
+
+            const item = pokemons.find(p => p.id === editingStockPriceItemId);
+            if (!item || item.status !== 'stock' || getInventoryGroupingKey(item) !== editingStockPriceKey) {
+                singleStockPriceMessage.textContent = '商品資料已變更，請重新開啟改價';
+                return;
+            }
+
+            const priceKey = editingStockPriceKey;
+            isSavingSingleStockPrice = true;
+            saveSingleStockPriceBtn.disabled = true;
+            saveSingleStockPriceBtn.textContent = '儲存中...';
+            singleStockPriceMessage.textContent = '';
+            try {
+                await setDoc(
+                    doc(db, "stockCopyPrices", encodeURIComponent(priceKey)),
+                    {
+                        priceKey,
+                        account: String(item.account || ''),
+                        name: item.name || '',
+                        colorType: normalizeColorType(item.colorType),
+                        backCardType: normalizeBackCardType(item.backCardType),
+                        price,
+                        updatedAt: Date.now()
+                    },
+                    { merge: true }
+                );
+                stockCopyPriceMap.set(priceKey, price);
+                if (currentTab === 'stock' || currentTab === 'all') render();
+                if (!copyModal.classList.contains('hidden')) refreshStockCopyPriceUi();
+                closeSingleStockPriceEditor();
+            } catch (error) {
+                console.error('儲存單一現貨價格失敗：', error);
+                singleStockPriceMessage.textContent = '儲存價格失敗，請稍後再試';
+            } finally {
+                isSavingSingleStockPrice = false;
+                saveSingleStockPriceBtn.disabled = false;
+                saveSingleStockPriceBtn.textContent = '儲存價格';
+            }
+        });
 
         function refreshStockCopyPriceUi(message = '') {
             const prices = getSavedCopyPrices(currentCopyGroups, stockCopyPriceMap);
