@@ -1,0 +1,105 @@
+name: Normalize account stock copy formatting
+
+on:
+  push:
+    branches:
+      - codex/group-stock-copy-by-account
+
+permissions:
+  contents: write
+
+jobs:
+  normalize-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/group-stock-copy-by-account
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Normalize helper indentation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent, indent
+
+          path = Path('index.html')
+          text = path.read_text(encoding='utf-8')
+
+          start = text.index('        function getInventoryGroupingKey(item) {')
+          end = text.index('\n\n        function getStockInventoryCount', start)
+          key_source = dedent("""\
+          function getInventoryGroupingKey(item) {
+              return JSON.stringify([
+                  String(item?.account || ''),
+                  normalizeInventoryYear(item?.year),
+                  normalizeColorType(item?.colorType),
+                  normalizeBackCardType(item?.backCardType),
+                  item?.name || ''
+              ]);
+          }""")
+          text = text[:start] + indent(key_source, '        ') + text[end:]
+
+          start = text.index('        function buildStockCopyLines(groups, prices = null) {')
+          end = text.index('\n\n        function getCopyPriceResult', start)
+          builder_source = dedent("""\
+          function buildStockCopyLines(groups, prices = null) {
+              if (!groups.length) return '目前無現貨寶可夢。';
+
+              const hasAccountSections = groups.every(group =>
+                  Object.prototype.hasOwnProperty.call(group, 'account')
+              );
+
+              if (!hasAccountSections) {
+                  return groups.map(({ label, quantity }, index) => {
+                      const stockLabel = quantity === 1 ? label : `${label}（現貨${quantity}隻）`;
+                      const priceLabel = prices ? `｜1隻${prices[index]}元` : '';
+                      return `🔥 ${stockLabel}${priceLabel}`;
+                  }).join('\\n');
+              }
+
+              const sections = new Map();
+              groups.forEach(group => {
+                  const account = String(group.account || '');
+                  if (!sections.has(account)) sections.set(account, []);
+                  sections.get(account).push(group);
+              });
+
+              let priceIndex = 0;
+              return Array.from(sections, ([account, accountGroups]) => {
+                  const lines = accountGroups.map(({ label, quantity }) => {
+                      const stockLabel = quantity === 1 ? label : `${label}（現貨${quantity}隻）`;
+                      const priceLabel = prices ? `｜1隻${prices[priceIndex]}元` : '';
+                      priceIndex += 1;
+                      return `🔥 ${stockLabel}${priceLabel}`;
+                  });
+                  return `【${account.slice(0, 6)}】\\n${lines.join('\\n')}`;
+              }).join('\\n\\n');
+          }""")
+          text = text[:start] + indent(builder_source, '        ') + text[end:]
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify tests and scope
+        shell: bash
+        run: |
+          node --test tests/inventory-color-and-stock-count.test.mjs
+          node --test tests/*.test.mjs
+          git diff --check
+          test "$(git diff --name-only)" = 'index.html'
+
+      - name: Publish formatting commit
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/normalize-account-stock-copy-format.yml
+          git add index.html
+          git diff --cached --check
+          git commit -m 'style: align account stock copy helpers'
+          git push origin HEAD:codex/group-stock-copy-by-account
