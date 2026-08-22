@@ -105,6 +105,55 @@ test('stock copy prefixes grouped lines while preserving quantity and the empty 
     assert.equal(buildStockCopyLines([]), '目前無現貨寶可夢。');
 });
 
+
+test('stock copy grouping key keeps full accounts separate when the displayed prefixes match', () => {
+    const { getInventoryGroupingKey } = loadHelpers();
+    const variant = { year: 2026, colorType: 'shiny', backCardType: 'none', name: '皮卡丘' };
+    assert.notEqual(
+        getInventoryGroupingKey({ ...variant, account: 'abcdef111111' }),
+        getInventoryGroupingKey({ ...variant, account: 'abcdef222222' })
+    );
+});
+
+test('stock copy groups by full account and displays only each account first six characters', () => {
+    const { buildStockCopyLines } = loadHelpers();
+    const groups = [
+        { account: 'abcdef111111', label: '26年異色皮卡丘', quantity: 2 },
+        { account: 'xyz789654321', label: '26年異色夢幻', quantity: 1 },
+        { account: 'abcdef111111', label: '26年異色烈空坐', quantity: 1 },
+        { account: 'abcdef222222', label: '26年異色超夢', quantity: 1 }
+    ];
+    const result = buildStockCopyLines(groups);
+    assert.equal(
+        result,
+        '【abcdef】\n🔥 26年異色皮卡丘（現貨2隻）\n🔥 26年異色烈空坐\n\n【xyz789】\n🔥 26年異色夢幻\n\n【abcdef】\n🔥 26年異色超夢'
+    );
+    assert.doesNotMatch(result, /abcdef111111|abcdef222222|xyz789654321/);
+
+    const handler = moduleScript.slice(
+        moduleScript.indexOf("document.getElementById('generateCopyBtn').addEventListener"),
+        moduleScript.indexOf("document.getElementById('closeCopyModalBtn')")
+    );
+    assert.match(handler, /account:\s*String\(p\.account \|\| ''\)/);
+});
+
+test('account-grouped prices follow displayed Pokemon lines rather than account sections', () => {
+    const { getCopyPriceResult } = loadHelpers();
+    const groups = [
+        { account: 'abcdef111111', label: '26年異色皮卡丘', quantity: 1 },
+        { account: 'xyz789654321', label: '26年異色夢幻', quantity: 1 },
+        { account: 'abcdef111111', label: '26年異色烈空坐', quantity: 1 }
+    ];
+    assert.equal(
+        getCopyPriceResult(groups, '150 300 200').text,
+        '【abcdef】\n🔥 26年異色皮卡丘｜1隻150元\n🔥 26年異色烈空坐｜1隻300元\n\n【xyz789】\n🔥 26年異色夢幻｜1隻200元'
+    );
+    assert.deepEqual(
+        { ...getCopyPriceResult(groups, '150 300') },
+        { ok: false, message: '需要 3 個價格，目前只有 2 個' }
+    );
+});
+
 test('copy prices accept spaces, commas, and newlines', () => {
     const { parseCopyPrices } = loadHelpers();
     assert.deepEqual(Array.from(parseCopyPrices('450 350 400')), [450, 350, 400]);

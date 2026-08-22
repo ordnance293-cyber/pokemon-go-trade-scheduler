@@ -422,8 +422,14 @@
         }
 
         function getInventoryGroupingKey(item) {
-            return JSON.stringify([normalizeInventoryYear(item?.year), normalizeColorType(item?.colorType), normalizeBackCardType(item?.backCardType), item?.name || '']);
-        }
+    return JSON.stringify([
+        String(item?.account || ''),
+        normalizeInventoryYear(item?.year),
+        normalizeColorType(item?.colorType),
+        normalizeBackCardType(item?.backCardType),
+        item?.name || ''
+    ]);
+}
 
         function getStockInventoryCount(items) {
             return items.filter(item => item.status === 'stock').length;
@@ -437,13 +443,38 @@
         }
 
         function buildStockCopyLines(groups, prices = null) {
-            if (!groups.length) return '目前無現貨寶可夢。';
-            return groups.map(({ label, quantity }, index) => {
-                const stockLabel = quantity === 1 ? label : `${label}（現貨${quantity}隻）`;
-                const priceLabel = prices ? `｜1隻${prices[index]}元` : '';
-                return `🔥 ${stockLabel}${priceLabel}`;
-            }).join('\n');
-        }
+    if (!groups.length) return '目前無現貨寶可夢。';
+
+    const hasAccountSections = groups.every(group =>
+        Object.prototype.hasOwnProperty.call(group, 'account')
+    );
+
+    if (!hasAccountSections) {
+        return groups.map(({ label, quantity }, index) => {
+            const stockLabel = quantity === 1 ? label : `${label}（現貨${quantity}隻）`;
+            const priceLabel = prices ? `｜1隻${prices[index]}元` : '';
+            return `🔥 ${stockLabel}${priceLabel}`;
+        }).join('\n');
+    }
+
+    const sections = new Map();
+    groups.forEach(group => {
+        const account = String(group.account || '');
+        if (!sections.has(account)) sections.set(account, []);
+        sections.get(account).push(group);
+    });
+
+    let priceIndex = 0;
+    return Array.from(sections, ([account, accountGroups]) => {
+        const lines = accountGroups.map(({ label, quantity }) => {
+            const stockLabel = quantity === 1 ? label : `${label}（現貨${quantity}隻）`;
+            const priceLabel = prices ? `｜1隻${prices[priceIndex]}元` : '';
+            priceIndex += 1;
+            return `🔥 ${stockLabel}${priceLabel}`;
+        });
+        return `【${account.slice(0, 6)}】\n${lines.join('\n')}`;
+    }).join('\n\n');
+}
 
         function getCopyPriceResult(groups, text) {
             if (!groups.length) return { ok: false, message: '目前沒有現貨文案可套用價格' };
@@ -1100,7 +1131,7 @@
             
             stockItems.forEach(p => {
                 const key = getInventoryGroupingKey(p);
-                const group = groups.get(key) || { label: formatInventoryCopyText(p), quantity: 0 };
+                const group = groups.get(key) || { account: String(p.account || ''), label: formatInventoryCopyText(p), quantity: 0 };
                 group.quantity += 1;
                 groups.set(key, group);
             });
