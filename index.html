@@ -64,6 +64,19 @@
             </div>
         </div>
 
+        <div class="glass-panel overflow-hidden rounded-2xl shadow-xl" aria-labelledby="luckyTrinketStatusTitle">
+            <h2 id="luckyTrinketStatusTitle" class="px-4 pt-4 text-lg font-black text-gray-800">Lucky Trinket</h2>
+            <table class="w-full table-fixed text-left text-sm">
+                <thead class="border-b border-gray-200 text-gray-500">
+                    <tr>
+                        <th scope="col" class="w-2/3 px-4 py-3 font-bold">帳號</th>
+                        <th scope="col" class="w-1/3 px-4 py-3 font-bold">首飾狀態</th>
+                    </tr>
+                </thead>
+                <tbody id="luckyTrinketAccountList" class="divide-y divide-gray-100"></tbody>
+            </table>
+        </div>
+
         <div class="glass-panel p-5 md:p-6 rounded-3xl shadow-2xl">
             <div class="flex items-center gap-2 mb-4">
                 <div class="w-2 h-6 bg-blue-500 rounded-full"></div>
@@ -304,6 +317,43 @@
             return value === 'buyer' || value === 'seller' ? value : null;
         }
 
+        function getLuckyTrinketAccountRows(accounts, inventoryItems) {
+            const seenNames = new Set();
+            const rows = [];
+
+            accounts.forEach(account => {
+                const name = account?.name;
+                if (typeof name !== 'string' || name === '' || seenNames.has(name)) return;
+                seenNames.add(name);
+                const unavailable = inventoryItems.some(item =>
+                    item?.account === name && normalizeLuckyTrinket(item?.luckyTrinket) === 'seller'
+                );
+                rows.push({ name, unavailable });
+            });
+
+            return [
+                ...rows.filter(row => row.unavailable),
+                ...rows.filter(row => !row.unavailable)
+            ];
+        }
+
+        function renderLuckyTrinketAccounts() {
+            const list = document.getElementById('luckyTrinketAccountList');
+            list.replaceChildren();
+
+            getLuckyTrinketAccountRows(savedAccounts, pokemons).forEach(({ name, unavailable }) => {
+                const row = document.createElement('tr');
+                const accountCell = document.createElement('td');
+                const statusCell = document.createElement('td');
+                accountCell.className = 'break-all px-4 py-3 font-mono font-bold text-gray-800';
+                statusCell.className = 'px-4 py-3 font-bold';
+                accountCell.textContent = name;
+                statusCell.textContent = unavailable ? '🔴 無' : '🟢 有';
+                row.append(accountCell, statusCell);
+                list.appendChild(row);
+            });
+        }
+
         function getLuckyTrinketLabel(value) {
             if (value === 'buyer') return '亮晶晶首飾（他出）';
             if (value === 'seller') return '亮晶晶首飾（我出）';
@@ -526,6 +576,7 @@
         function rebuildEffectiveInventory() {
             pokemons = mergeInventoryItems(syncedPokemons, pendingInventoryItems);
             pokemons.sort((a, b) => (a.tradeDate || '9999').localeCompare(b.tradeDate || '9999') || b.createdAt - a.createdAt);
+            renderLuckyTrinketAccounts();
         }
 
         onSnapshot(collection(db, "accounts"), (snapshot) => {
@@ -545,6 +596,7 @@
                 span.innerHTML = `${acc.name} <button onclick="deleteAccount('${acc.id}')" class="text-red-400">×</button>`;
                 tags.appendChild(span);
             });
+            renderLuckyTrinketAccounts();
             if (editingStockId === null) populateEditStockAccountSelect();
         });
 
