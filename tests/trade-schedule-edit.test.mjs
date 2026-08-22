@@ -31,12 +31,13 @@ test('edit selection is isolated, toggleable, and mutually exclusive', () => {
     assert.match(script, /editingLuckyTrinket === 'seller' \? null : 'seller'/);
 });
 
-test('save revalidates stale items and updates only partner and luckyTrinket', () => {
+test('save revalidates stale items and delegates to transaction-safe trinket editing', () => {
     const handler = script.match(/saveEditTradeBtn\.addEventListener\('click', async \(\) => \{([\s\S]*?)\n        \}\);/)?.[1] || '';
     assert.match(handler, /editTradePartnerInput\.value\.trim\(\)/);
     assert.match(handler, /pokemons\.find\(p => p\.id === editingTradeId\)/);
     assert.match(handler, /!item \|\| item\.status !== 'trading'/);
-    assert.match(handler, /updateDoc\(doc\(db, "inventory", editingTradeId\), \{\s*partner,\s*luckyTrinket: editingLuckyTrinket\s*\}\)/);
+    assert.match(handler, /await updateLuckyTrinketTrade\(item, partner, editingLuckyTrinket\)/);
     assert.doesNotMatch(handler, /tradeDate|findNextAvailableDate|status:|account:|name:/);
     assert.match(script, /cancelEditTradeBtn\.addEventListener\('click', \(\) => editTradeModal\.classList\.add\('hidden'\)\)/);
+    assert.match(script, /async function updateLuckyTrinketTrade[\s\S]*?runTransaction[\s\S]*?lockSnapshot\.data\(\)\.state === 'reserved'[\s\S]*?transaction\.delete\(lockRef\)/);
 });
