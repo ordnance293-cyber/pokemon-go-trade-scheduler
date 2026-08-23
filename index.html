@@ -111,6 +111,11 @@
                     <button id="generateCopyBtn" class="px-4 md:px-6 py-2 rounded-xl bg-purple-600 text-white font-bold text-sm shadow-md hover:bg-purple-700 active:scale-95 transition-all">📝 現貨文案</button>
                 </div>
                 <div class="w-full md:w-auto flex flex-wrap items-center gap-2">
+                    <select id="tradingSortSelect" class="hidden shrink-0 bg-white border border-gray-200 px-3 py-2 rounded-xl text-sm font-bold shadow-sm outline-none">
+                        <option value="schedule">排程順序</option>
+                        <option value="desc">最新排隊</option>
+                        <option value="asc">最早排隊</option>
+                    </select>
                     <select id="doneSortSelect" class="hidden shrink-0 bg-white border border-gray-200 px-3 py-2 rounded-xl text-sm font-bold shadow-sm outline-none">
                         <option value="desc">由近到遠</option>
                         <option value="asc">由遠到近</option>
@@ -384,6 +389,7 @@
         const failedInventoryItemIds = new Set();
         const searchInput = document.getElementById('searchInput');
         const clearSearchBtn = document.getElementById('clearSearchBtn');
+        const tradingSortSelect = document.getElementById('tradingSortSelect');
         const doneSortSelect = document.getElementById('doneSortSelect');
         const completeModal = document.getElementById('completeModal');
         const completePokemonName = document.getElementById('completePokemonName');
@@ -555,6 +561,24 @@
 
         function comparePendingTradesForDisplay(a, b) {
             return Number(tradeNeedsWeeklyChallenge(a)) - Number(tradeNeedsWeeklyChallenge(b));
+        }
+
+        function getScheduledAtValue(item) {
+            const value = item?.scheduledAt;
+            return Number.isFinite(value) && value > 0 ? value : null;
+        }
+
+        function compareTradingItemsByScheduledAt(a, b, direction) {
+            const aScheduledAt = getScheduledAtValue(a);
+            const bScheduledAt = getScheduledAtValue(b);
+            if (aScheduledAt !== null && bScheduledAt === null) return -1;
+            if (aScheduledAt === null && bScheduledAt !== null) return 1;
+            if (aScheduledAt !== null && bScheduledAt !== null) {
+                return direction === 'asc' ? aScheduledAt - bScheduledAt : bScheduledAt - aScheduledAt;
+            }
+            return String(a?.tradeDate || '').localeCompare(String(b?.tradeDate || ''))
+                || (Number(a?.createdAt) || 0) - (Number(b?.createdAt) || 0)
+                || String(a?.id || '').localeCompare(String(b?.id || ''));
         }
 
         function getLuckyTrinketAccountDisplayName(account) {
@@ -1459,7 +1483,7 @@
                         const now = Date.now();
                         transaction.set(lockRef, { cycleId: cycle.id, account: accountName, inventoryId: selectedId, state: 'reserved', reservedAt: now, usedAt: null, updatedAt: now, source: 'runtime' });
                         transaction.set(taskRef, { inventoryId: selectedId, account: accountName, partner, luckyTrinket: 'seller', pokemonLabel: formatInventoryCopyText(inventorySnapshot.data()), createdAt: now, source: 'runtime' });
-                        transaction.update(inventoryRef, { status: 'trading', partner, tradeDate: autoDate, luckyTrinket: 'seller', luckyTrinketCycleId: cycle.id, weeklyChallengeTaskId: taskRef.id, weeklyChallengeCompletedWeekId: deleteField(), weeklyChallengeCompletedAt: deleteField() });
+                        transaction.update(inventoryRef, { status: 'trading', partner, tradeDate: autoDate, luckyTrinket: 'seller', luckyTrinketCycleId: cycle.id, weeklyChallengeTaskId: taskRef.id, scheduledAt: now, weeklyChallengeCompletedWeekId: deleteField(), weeklyChallengeCompletedAt: deleteField() });
                     });
                 } else if (selectedLuckyTrinket === 'buyer') {
                     const inventoryRef = doc(db, 'inventory', selectedId);
@@ -1469,14 +1493,15 @@
                         if (!inventorySnapshot.exists() || inventorySnapshot.data().status !== 'stock') throw new Error('INVENTORY_CHANGED');
                         const now = Date.now();
                         transaction.set(taskRef, { inventoryId: selectedId, account: inventorySnapshot.data().account, partner, luckyTrinket: 'buyer', pokemonLabel: formatInventoryCopyText(inventorySnapshot.data()), createdAt: now, source: 'runtime' });
-                        transaction.update(inventoryRef, { status: 'trading', partner, tradeDate: autoDate, luckyTrinket: 'buyer', luckyTrinketCycleId: deleteField(), weeklyChallengeTaskId: taskRef.id, weeklyChallengeCompletedWeekId: deleteField(), weeklyChallengeCompletedAt: deleteField() });
+                        transaction.update(inventoryRef, { status: 'trading', partner, tradeDate: autoDate, luckyTrinket: 'buyer', luckyTrinketCycleId: deleteField(), weeklyChallengeTaskId: taskRef.id, scheduledAt: now, weeklyChallengeCompletedWeekId: deleteField(), weeklyChallengeCompletedAt: deleteField() });
                     });
                 } else {
                     const inventoryRef = doc(db, 'inventory', selectedId);
                     await runTransaction(db, async transaction => {
                         const inventorySnapshot = await transaction.get(inventoryRef);
                         if (!inventorySnapshot.exists() || inventorySnapshot.data().status !== 'stock') throw new Error('INVENTORY_CHANGED');
-                        transaction.update(inventoryRef, { status: 'trading', partner, tradeDate: autoDate, luckyTrinket: null, luckyTrinketCycleId: deleteField(), weeklyChallengeTaskId: deleteField(), weeklyChallengeCompletedWeekId: deleteField(), weeklyChallengeCompletedAt: deleteField() });
+                        const now = Date.now();
+                        transaction.update(inventoryRef, { status: 'trading', partner, tradeDate: autoDate, luckyTrinket: null, luckyTrinketCycleId: deleteField(), weeklyChallengeTaskId: deleteField(), scheduledAt: now, weeklyChallengeCompletedWeekId: deleteField(), weeklyChallengeCompletedAt: deleteField() });
                     });
                 }
                 const scheduledOverride = { id: selectedId, account: selectedAccName, status: 'trading', luckyTrinket: selectedLuckyTrinket, tradeDate: autoDate };
@@ -1677,7 +1702,14 @@
             }
 
             if (currentTab === 'trading') {
-                filtered = [...filtered].sort(comparePendingTradesForDisplay);
+                const mode = tradingSortSelect.value;
+                if (mode === 'schedule') {
+                    filtered = [...filtered].sort(comparePendingTradesForDisplay);
+                } else {
+                    filtered = [...filtered].sort((a, b) =>
+                        compareTradingItemsByScheduledAt(a, b, mode)
+                    );
+                }
             }
 
             let fastestDate = null;
@@ -1875,12 +1907,14 @@
         document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', (e) => {
             currentTab = e.target.dataset.tab;
             doneSortSelect.classList.toggle('hidden', currentTab !== 'done');
+            tradingSortSelect.classList.toggle('hidden', currentTab !== 'trading');
             document.querySelectorAll('.tab-btn').forEach(b => b.className = "tab-btn px-4 md:px-6 py-2 rounded-xl text-gray-500 font-bold text-sm");
             e.target.className = "tab-btn px-4 md:px-6 py-2 rounded-xl bg-blue-600 text-white font-bold text-sm shadow-md";
             clearSearch(); 
         }));
 
         doneSortSelect.addEventListener('change', render);
+        tradingSortSelect.addEventListener('change', render);
 
         function insertPriceSeparator(input) {
             const start = input.selectionStart ?? input.value.length;
