@@ -427,6 +427,9 @@
         let weeklyChallengeTasksSnapshotReady = false;
         let legacyWeeklyChallengeReconciled = false;
         let isCompletingWeeklyChallenge = false;
+        let dailyTradeCompletionLockMap = new Map();
+        let dailyTradeCompletionLockSnapshotReady = false;
+        let legacyDailyTradeCompletionReconciled = false;
 
         const LUCKY_TRINKET_CYCLES = [
             {
@@ -474,6 +477,76 @@
 
         function normalizeLuckyTrinket(value) {
             return value === 'buyer' || value === 'seller' ? value : null;
+        }
+
+        function isValidDateString(value) {
+            return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+        }
+
+        function getTaipeiDateString(timestamp = Date.now()) {
+            const parts = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
+            }).formatToParts(new Date(timestamp));
+            const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+            return `${values.year}-${values.month}-${values.day}`;
+        }
+
+        function getEffectiveCompletedTaipeiDate(item) {
+            if (isValidDateString(item?.completedTaipeiDate)) return item.completedTaipeiDate;
+            if (Number.isFinite(Number(item?.completedAt))) return getTaipeiDateString(Number(item.completedAt));
+            return isValidDateString(item?.tradeDate) ? item.tradeDate : null;
+        }
+
+        function getDailyTradeCompletionLockKey(accountName, taipeiDate) {
+            return JSON.stringify([String(taipeiDate || ''), String(accountName || '')]);
+        }
+
+        function getDailyTradeCompletionLockRef(accountName, taipeiDate) {
+            return doc(db, 'dailyTradeCompletionLocks', encodeURIComponent(getDailyTradeCompletionLockKey(accountName, taipeiDate)));
+        }
+
+        function getTradeSchedulePriority(item) {
+            return normalizeLuckyTrinket(item?.luckyTrinket) ? 1 : 0;
+        }
+
+        function addCalendarDays(dateStr, days) {
+            const [year, month, day] = dateStr.split('-').map(Number);
+            const date = new Date(Date.UTC(year, month - 1, day + days));
+            return date.toISOString().slice(0, 10);
+        }
+
+        function getAccountCompletedTaipeiDates(accountName, inventoryItems, completionLockMap) {
+            const dates = new Set();
+            completionLockMap.forEach(lock => {
+                if (lock?.account === accountName && isValidDateString(lock.taipeiDate)) dates.add(lock.taipeiDate);
+            });
+            inventoryItems.forEach(item => {
+                if (item?.account !== accountName || item.status !== 'done') return;
+                const date = getEffectiveCompletedTaipeiDate(item);
+                if (date) dates.add(date);
+            });
+            return dates;
+        }
+
+        function buildAccountPrioritySchedulePlan(accountName, inventoryItems, completionLocks, startDateStr, options = null) {
+            options ||= {};
+            const overrides = new Map((options.itemOverrides || []).map(item => [item.id, { ...item }]));
+            const merged = inventoryItems.map(item => overrides.has(item.id) ? { ...item, ...overrides.get(item.id) } : { ...item });
+            overrides.forEach((item, id) => { if (!merged.some(existing => existing.id === id)) merged.push({ ...item }); });
+            const occupied = getAccountCompletedTaipeiDates(accountName, merged, completionLocks);
+            (options.occupiedDateOverrides || []).forEach(date => { if (isValidDateString(date)) occupied.add(date); });
+            const pending = merged.filter(item => item.id !== options.excludeId && item.account === accountName && item.status === 'trading');
+            pending.sort((a, b) => getTradeSchedulePriority(a) - getTradeSchedulePriority(b)
+                || String(a.tradeDate || '9999-99-99').localeCompare(String(b.tradeDate || '9999-99-99'))
+                || (Number(a.createdAt) || 0) - (Number(b.createdAt) || 0)
+                || String(a.id || '').localeCompare(String(b.id || '')));
+            let date = isValidDateString(startDateStr) ? startDateStr : getTaipeiDateString();
+            return pending.map(item => {
+                while (occupied.has(date)) date = addCalendarDays(date, 1);
+                const plannedTradeDate = date;
+                occupied.add(date); date = addCalendarDays(date, 1);
+                return { id: item.id, previousTradeDate: item.tradeDate || '', plannedTradeDate };
+            });
         }
 
         function tradeNeedsWeeklyChallenge(item) {
@@ -937,14 +1010,12 @@
 
             const date = new Date(timestamp);
             if (Number.isNaN(date.getTime())) return '未紀錄';
-
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            const hour = String(date.getHours()).padStart(2, '0');
-            const minute = String(date.getMinutes()).padStart(2, '0');
-
-            return `${year}/${month}/${day} ${hour}:${minute}`;
+            const parts = new Intl.DateTimeFormat('zh-TW', {
+                timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+            }).formatToParts(date);
+            const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+            return `${values.year}/${values.month}/${values.day} ${values.hour}:${values.minute}（台北時間）`;
         }
 
         function compareDoneItems(a, b, direction) {
@@ -1010,18 +1081,43 @@
         });
 
         function checkAndRescheduleOverdue() {
-            if (!pokemons.length) return;
-            const todayStr = getTodayStr();
+            if (!pokemons.length || !inventorySnapshotReady || !dailyTradeCompletionLockSnapshotReady) return;
+            const todayStr = getTaipeiDateString();
             const overdueItems = pokemons.filter(p => p.status === 'trading' && p.tradeDate && p.tradeDate < todayStr);
-            
-            if (overdueItems.length > 0) {
-                let tempPokemons = [...pokemons]; 
-                
-                overdueItems.forEach(item => {
-                    let newDateStr = findNextAvailableDate(item.account, todayStr);
-                    const idx = tempPokemons.findIndex(p => p.id === item.id);
-                    if (idx > -1) tempPokemons[idx].tradeDate = newDateStr;
-                    updateDoc(doc(db, "inventory", item.id), { tradeDate: newDateStr });
+            [...new Set(overdueItems.map(item => item.account))].forEach(account => {
+                window.repackSchedule(account).catch(error => console.error('逾期交換重新排程失敗：', error));
+            });
+        }
+
+        onSnapshot(collection(db, "dailyTradeCompletionLocks"), (snapshot) => {
+            const nextLocks = new Map();
+            snapshot.docs.forEach(snapshotDoc => {
+                const lock = { id: snapshotDoc.id, ...snapshotDoc.data() };
+                if (!String(lock.account || '') || !isValidDateString(lock.taipeiDate) || (!Number.isFinite(Number(lock.completedAt)) && !lock.inventoryId)) return;
+                nextLocks.set(getDailyTradeCompletionLockKey(lock.account, lock.taipeiDate), lock);
+            });
+            dailyTradeCompletionLockMap = nextLocks;
+            dailyTradeCompletionLockSnapshotReady = true;
+            reconcileLegacyDailyTradeCompletionLocks().catch(error => console.error('舊每日交換紀錄回填失敗：', error));
+        }, error => console.error('讀取每日交換紀錄失敗：', error));
+
+        async function reconcileLegacyDailyTradeCompletionLocks() {
+            if (legacyDailyTradeCompletionReconciled || !inventorySnapshotReady || !dailyTradeCompletionLockSnapshotReady) return;
+            legacyDailyTradeCompletionReconciled = true;
+            const seen = new Set();
+            const candidates = syncedPokemons.filter(item => item.status === 'done' && item.account).sort((a, b) => String(a.id).localeCompare(String(b.id)));
+            for (const item of candidates) {
+                const taipeiDate = getEffectiveCompletedTaipeiDate(item);
+                if (!taipeiDate) continue;
+                const key = getDailyTradeCompletionLockKey(item.account, taipeiDate);
+                if (seen.has(key)) console.warn('同帳號同日有多筆舊完成紀錄：', item.account, taipeiDate);
+                seen.add(key);
+                const dailyLockRef = getDailyTradeCompletionLockRef(item.account, taipeiDate);
+                await runTransaction(db, async transaction => {
+                    const existing = await transaction.get(dailyLockRef);
+                    if (existing.exists()) return;
+                    const now = Date.now();
+                    transaction.set(dailyLockRef, { account: item.account, taipeiDate, inventoryId: item.id, completedAt: Number.isFinite(Number(item.completedAt)) ? Number(item.completedAt) : now, updatedAt: now, source: 'legacy-backfill' });
                 });
             }
         }
@@ -1043,6 +1139,7 @@
             weeklyChallengeTaskMap = new Map(snapshot.docs.map(snapshotDoc => [snapshotDoc.id, { id: snapshotDoc.id, ...snapshotDoc.data() }]));
             weeklyChallengeTasksSnapshotReady = true;
             reconcileLegacyWeeklyChallengeTasks().catch(error => console.error('舊週間挑戰名單回填失敗：', error));
+            reconcileLegacyDailyTradeCompletionLocks().catch(error => console.error('舊每日交換紀錄回填失敗：', error));
             refreshWeeklyChallengeIfOpen();
         }, error => console.error('讀取週間挑戰名單失敗：', error));
 
@@ -1106,6 +1203,7 @@
             refreshArrangeLuckyTrinketAvailability();
             reconcileLegacyLuckyTrinketLocksForRolloutCycle().catch(error => console.error('舊首飾鎖回填失敗：', error));
             reconcileLegacyWeeklyChallengeTasks().catch(error => console.error('舊週間挑戰名單回填失敗：', error));
+            reconcileLegacyDailyTradeCompletionLocks().catch(error => console.error('舊每日交換紀錄回填失敗：', error));
             
             checkAndRescheduleOverdue(); 
             render(); renderTimeline();
@@ -1201,83 +1299,33 @@
                         const accName = itemEl.dataset.account;
                         const newDate = toList.dataset.date;
                         
-                        const conflictItem = pokemons.find(p => p.account === accName && p.tradeDate === newDate && p.status !== 'stock' && p.id !== itemId);
-                        
-                        if (conflictItem) {
-                            if (conflictItem.status === 'done') {
-                                alert(`@${accName} 於 ${newDate} 已經有已完成的交易，無法覆蓋！`);
-                                renderTimeline(); 
-                                return;
-                            }
-                            const parts = newDate.split('-');
-                            let searchDate = new Date(parts[0], parts[1] - 1, parts[2]);
-                            searchDate.setDate(searchDate.getDate() + 1);
-                            const searchDateStr = `${searchDate.getFullYear()}-${String(searchDate.getMonth() + 1).padStart(2, '0')}-${String(searchDate.getDate()).padStart(2, '0')}`;
-                            const pushDate = findNextAvailableDate(accName, searchDateStr);
-                            await updateDoc(doc(db, "inventory", conflictItem.id), { tradeDate: pushDate });
-                        }
-                        await updateDoc(doc(db, "inventory", itemId), { tradeDate: newDate });
+                        const item = pokemons.find(p => p.id === itemId && p.account === accName && p.status === 'trading');
+                        if (!item) return renderTimeline();
+                        const occupied = getAccountCompletedTaipeiDates(accName, pokemons, dailyTradeCompletionLockMap);
+                        await window.repackSchedule(accName, null, { itemOverrides: [{ ...item, tradeDate: newDate }] });
+                        if (occupied.has(newDate)) alert('此帳號該日期已有完成交換，已重新安排到可用日期');
                     }
                 });
             });
         }
 
         function findNextAvailableDate(accName, startDateStr = null) {
-            let checkDate = new Date(); 
-            if (startDateStr) {
-                const parts = startDateStr.split('-');
-                checkDate = new Date(parts[0], parts[1] - 1, parts[2]);
-            }
-            let found = false; 
-            let finalDateStr = "";
-            
-            while (!found) {
-                const year = checkDate.getFullYear();
-                const month = String(checkDate.getMonth() + 1).padStart(2, '0');
-                const day = String(checkDate.getDate()).padStart(2, '0');
-                const dateStr = `${year}-${month}-${day}`;
-                const hasTrade = pokemons.some(p => p.account === accName && p.tradeDate === dateStr && p.status !== 'stock');
-                if (!hasTrade) { 
-                    finalDateStr = dateStr; 
-                    found = true; 
-                } else { 
-                    checkDate.setDate(checkDate.getDate() + 1); 
-                }
-            }
-            return finalDateStr;
+            let date = startDateStr || getTaipeiDateString();
+            const occupied = getAccountCompletedTaipeiDates(accName, pokemons, dailyTradeCompletionLockMap);
+            pokemons.forEach(item => { if (item.account === accName && item.status === 'trading' && isValidDateString(item.tradeDate)) occupied.add(item.tradeDate); });
+            while (occupied.has(date)) date = addCalendarDays(date, 1);
+            return date;
         }
 
-        window.repackSchedule = async (accName, excludedItemId = null) => {
-            const todayStr = getTodayStr();
-            const pendingTrades = pokemons.filter(p => p.id !== excludedItemId && p.account === accName && p.status === 'trading');
-            pendingTrades.sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
-
-            const occupiedDates = new Set(pokemons.filter(p => p.id !== excludedItemId && p.account === accName && p.status === 'done' && p.tradeDate >= todayStr).map(p => p.tradeDate));
-
-            for (let item of pendingTrades) {
-                let checkDate = new Date();
-                let found = false;
-                let finalDateStr = "";
-                
-                while (!found) {
-                    const year = checkDate.getFullYear();
-                    const month = String(checkDate.getMonth() + 1).padStart(2, '0');
-                    const day = String(checkDate.getDate()).padStart(2, '0');
-                    const dateStr = `${year}-${month}-${day}`;
-
-                    if (!occupiedDates.has(dateStr)) {
-                        finalDateStr = dateStr;
-                        occupiedDates.add(dateStr);
-                        found = true;
-                    } else {
-                        checkDate.setDate(checkDate.getDate() + 1);
-                    }
-                }
-                
-                if (item.tradeDate !== finalDateStr) {
-                    await updateDoc(doc(db, "inventory", item.id), { tradeDate: finalDateStr });
-                }
-            }
+        window.repackSchedule = async (accName, excludedItemId = null, options = {}) => {
+            if (!inventorySnapshotReady || (!dailyTradeCompletionLockSnapshotReady && !options.allowUnready)) throw new Error('DAILY_TRADE_SYNCING');
+            const plan = buildAccountPrioritySchedulePlan(accName, pokemons, dailyTradeCompletionLockMap, options.startDate || getTaipeiDateString(), { ...options, excludeId: excludedItemId });
+            const changes = plan.filter(item => item.previousTradeDate !== item.plannedTradeDate);
+            if (!changes.length) return plan;
+            const batch = writeBatch(db);
+            changes.forEach(item => batch.update(doc(db, 'inventory', item.id), { tradeDate: item.plannedTradeDate }));
+            await batch.commit();
+            return plan;
         };
 
         window.openTrade = (id, accName) => {
@@ -1374,7 +1422,7 @@
                 hideCompleteModal();
             } catch (error) {
                 console.error('完成交換失敗：', error);
-                alert('完成交換失敗，請檢查網路後再試一次。');
+                alert(error.message === 'DAILY_TRADE_ALREADY_COMPLETED' ? '此帳號今天已完成過交換，無法再次完成' : '完成交換失敗，請檢查網路後再試一次。');
             } finally {
                 setCompleteModalBusy(false);
             }
@@ -1390,6 +1438,7 @@
             if (isConfirmingTrade) return;
             const partner = document.getElementById('partnerInput').value.trim();
             if (!partner) return alert("輸入買家");
+            if (!inventorySnapshotReady || !dailyTradeCompletionLockSnapshotReady) return alert('每日交換紀錄同步中，請稍後再試');
             const autoDate = findNextAvailableDate(selectedAccName);
             const confirmTradeBtn = document.getElementById('confirmTradeBtn');
             isConfirmingTrade = true; confirmTradeBtn.disabled = true; confirmTradeBtn.textContent = '處理中...';
@@ -1430,7 +1479,14 @@
                         transaction.update(inventoryRef, { status: 'trading', partner, tradeDate: autoDate, luckyTrinket: null, luckyTrinketCycleId: deleteField(), weeklyChallengeTaskId: deleteField(), weeklyChallengeCompletedWeekId: deleteField(), weeklyChallengeCompletedAt: deleteField() });
                     });
                 }
+                const scheduledOverride = { id: selectedId, account: selectedAccName, status: 'trading', luckyTrinket: selectedLuckyTrinket, tradeDate: autoDate };
                 document.getElementById('tradeModal').classList.add('hidden'); clearSearch();
+                try {
+                    await window.repackSchedule(selectedAccName, null, { itemOverrides: [scheduledOverride] });
+                } catch (repackError) {
+                    console.error('交易已排隊，但優先排程重新整理失敗：', repackError);
+                    alert('交易已排隊，但優先排程重新整理失敗，請稍後再試');
+                }
             } catch (error) {
                 const messages = { TRINKET_SYNCING: '首飾資料同步中，請稍後再試', NO_TRINKET_CYCLE: '目前未設定 GO Pass 首飾週期，暫時無法使用「我出首飾」', TRINKET_CONFLICT: '此帳號本期 GO Pass 首飾已預約或使用，無法重複出售', INVENTORY_CHANGED: '這筆現貨已經變更，請重新整理後再試。' };
                 alert(messages[error.message] || '安排交換失敗，請檢查網路後再試一次。');
@@ -1506,6 +1562,12 @@
             try {
                 await updateLuckyTrinketTrade(item, partner, editingLuckyTrinket);
                 editTradeModal.classList.add('hidden');
+                try {
+                    await window.repackSchedule(item.account, null, { itemOverrides: [{ ...item, partner, luckyTrinket: editingLuckyTrinket }] });
+                } catch (repackError) {
+                    console.error('交換已修改，但優先排程重新整理失敗：', repackError);
+                    alert('交換已修改，但優先排程重新整理失敗，請稍後再試');
+                }
             } catch (error) {
                 alert(error.message === 'TRINKET_CONFLICT' ? '此帳號本期 GO Pass 首飾已預約或使用，無法重複出售' : error.message === 'NO_TRINKET_CYCLE' ? '目前未設定 GO Pass 首飾週期，暫時無法使用「我出首飾」' : '編輯交換失敗，請稍後再試。');
             }
@@ -1670,30 +1732,47 @@
         
         window.updateStatus = async (id, status) => {
             const item = pokemons.find(p => p.id === id);
-            if (status === 'done' && normalizeLuckyTrinket(item?.luckyTrinket) === 'seller') {
+            let completion = null;
+            if (status === 'done') {
+                const completedAt = Date.now();
+                const completedTaipeiDate = getTaipeiDateString(completedAt);
+                completion = { completedAt, completedTaipeiDate };
                 const inventoryRef = doc(db, 'inventory', id);
                 await runTransaction(db, async transaction => {
                     const snapshot = await transaction.get(inventoryRef);
                     if (!snapshot.exists() || snapshot.data().status !== 'trading') throw new Error('INVENTORY_CHANGED');
                     const current = { id, ...snapshot.data() };
+                    const dailyLockRef = getDailyTradeCompletionLockRef(current.account, completedTaipeiDate);
+                    const dailyLockSnapshot = await transaction.get(dailyLockRef);
+                    if (dailyLockSnapshot.exists() && dailyLockSnapshot.data().inventoryId !== id) throw new Error('DAILY_TRADE_ALREADY_COMPLETED');
                     let cycleId = current.luckyTrinketCycleId;
-                    const rolloutCycle = LUCKY_TRINKET_CYCLES.find(cycle => cycle.id === LEGACY_LUCKY_TRINKET_ROLLOUT_CYCLE_ID);
-                    if (!cycleId && isLegacySellerRecordRelevantToCycle(current, rolloutCycle)) cycleId = rolloutCycle.id;
-                    if (!cycleId) throw new Error('無法判定舊首飾交換所屬週期');
-                    const lockRef = getLuckyTrinketCycleLockRef(current.account, cycleId);
-                    const lockSnapshot = await transaction.get(lockRef);
-                    if (lockSnapshot.exists() && lockSnapshot.data().inventoryId !== id) throw new Error('首飾鎖屬於其他交換，無法完成');
-                    const now = Date.now();
-                    const reservedAt = lockSnapshot.exists() ? lockSnapshot.data().reservedAt || now : now;
-                    transaction.set(lockRef, { cycleId, account: current.account, inventoryId: id, state: 'used', reservedAt, usedAt: now, updatedAt: now, source: lockSnapshot.exists() ? lockSnapshot.data().source || 'runtime' : 'legacy-rollout-backfill' });
-                    transaction.update(inventoryRef, { status: 'done', completedAt: now, luckyTrinketCycleId: cycleId });
+                    let trinketLockRef = null; let trinketLockSnapshot = null;
+                    if (normalizeLuckyTrinket(current.luckyTrinket) === 'seller') {
+                        const rolloutCycle = LUCKY_TRINKET_CYCLES.find(cycle => cycle.id === LEGACY_LUCKY_TRINKET_ROLLOUT_CYCLE_ID);
+                        if (!cycleId && isLegacySellerRecordRelevantToCycle(current, rolloutCycle)) cycleId = rolloutCycle.id;
+                        if (!cycleId) throw new Error('無法判定舊首飾交換所屬週期');
+                        trinketLockRef = getLuckyTrinketCycleLockRef(current.account, cycleId);
+                        trinketLockSnapshot = await transaction.get(trinketLockRef);
+                        if (trinketLockSnapshot.exists() && trinketLockSnapshot.data().inventoryId !== id) throw new Error('首飾鎖屬於其他交換，無法完成');
+                    }
+                    if (trinketLockRef) {
+                        const reservedAt = trinketLockSnapshot.exists() ? trinketLockSnapshot.data().reservedAt || completedAt : completedAt;
+                        transaction.set(trinketLockRef, { cycleId, account: current.account, inventoryId: id, state: 'used', reservedAt, usedAt: completedAt, updatedAt: completedAt, source: trinketLockSnapshot.exists() ? trinketLockSnapshot.data().source || 'runtime' : 'legacy-rollout-backfill' });
+                    }
+                    transaction.set(dailyLockRef, { account: current.account, taipeiDate: completedTaipeiDate, inventoryId: id, completedAt, updatedAt: completedAt, source: 'runtime' });
+                    transaction.update(inventoryRef, { status: 'done', completedAt, completedTaipeiDate, ...(cycleId ? { luckyTrinketCycleId: cycleId } : {}) });
                 });
             } else {
-                const updates = status === 'done' ? { status: 'done', completedAt: Date.now() } : { status };
-                await updateDoc(doc(db, "inventory", id), updates);
+                await updateDoc(doc(db, "inventory", id), { status });
             }
             if (status === 'done' && item) {
-                setTimeout(() => window.repackSchedule(item.account), 800);
+                dailyTradeCompletionLockMap.set(getDailyTradeCompletionLockKey(item.account, completion.completedTaipeiDate), { account: item.account, taipeiDate: completion.completedTaipeiDate, inventoryId: id, completedAt: completion.completedAt, source: 'runtime' });
+                try {
+                    await window.repackSchedule(item.account, id, { occupiedDateOverrides: [completion.completedTaipeiDate], allowUnready: true });
+                } catch (repackError) {
+                    console.error('交換已完成，但待交換排程重新整理失敗：', repackError);
+                    alert('交換已完成，但待交換排程重新整理失敗，請稍後再試');
+                }
             }
         };
 
@@ -1720,7 +1799,7 @@
                         const lockSnapshot = await transaction.get(lockRef);
                         if (lockSnapshot.exists() && lockSnapshot.data().state === 'reserved' && lockSnapshot.data().inventoryId === current.id) transaction.delete(lockRef);
                     }
-                    const updates = { status: 'stock', partner: '', tradeDate: '', completedAt: deleteField() };
+                    const updates = { status: 'stock', partner: '', tradeDate: '', completedAt: deleteField(), completedTaipeiDate: deleteField() };
                     if (current.status === 'trading') {
                         if (taskSnapshot?.exists()) transaction.delete(taskRef);
                         updates.luckyTrinket = deleteField(); updates.luckyTrinketCycleId = deleteField(); updates.weeklyChallengeTaskId = deleteField();
@@ -1759,9 +1838,7 @@
                     if (taskSnapshot?.exists()) transaction.delete(taskRef);
                     transaction.delete(inventoryRef);
                 });
-                if (item && item.status === 'trading') {
-                    setTimeout(() => window.repackSchedule(item.account), 800);
-                }
+                if (item && ['trading', 'done'].includes(item.status)) await window.repackSchedule(item.account, item.id);
             }
         };
 
