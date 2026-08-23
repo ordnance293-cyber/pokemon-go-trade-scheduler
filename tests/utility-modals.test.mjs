@@ -25,11 +25,12 @@ function countId(id) {
     return (html.match(new RegExp(`id="${id}"`, 'g')) || []).length;
 }
 
-test('three compact utility shortcuts are available near the page header', () => {
+test('four compact utility shortcuts are available near the page header', () => {
     for (const [id, label] of [
         ['openAccountManagementBtn', '帳號管理'],
         ['openScheduleOverviewBtn', '待交換清單'],
-        ['openLuckyTrinketStatusBtn', '亮晶晶首飾']
+        ['openLuckyTrinketStatusBtn', '亮晶晶首飾'],
+        ['openWeeklyChallengeBtn', '週間挑戰']
     ]) {
         assert.match(html, new RegExp(`id="${id}"[^>]*>[\\s\\S]*?${label}`));
     }
@@ -41,7 +42,8 @@ test('each utility modal owns its single authoritative existing content', () => 
     const expected = {
         accountManagementModal: ['newAccountInput', 'saveAccountBtn', 'accountTags'],
         scheduleOverviewModal: ['scheduleTimeline'],
-        luckyTrinketStatusModal: ['luckyTrinketAccountList']
+        luckyTrinketStatusModal: ['luckyTrinketAccountList'],
+        weeklyChallengeModal: ['weeklyChallengeWeekLabel', 'weeklyChallengeSummary', 'weeklyChallengeAccountList']
     };
     for (const [modalId, ids] of Object.entries(expected)) {
         const modal = elementById(modalId);
@@ -56,7 +58,8 @@ test('utility modals start hidden and have mobile-safe scrolling content and clo
     const controls = {
         accountManagementModal: 'closeAccountManagementModalBtn',
         scheduleOverviewModal: 'closeScheduleOverviewModalBtn',
-        luckyTrinketStatusModal: 'closeLuckyTrinketStatusBtn'
+        luckyTrinketStatusModal: 'closeLuckyTrinketStatusBtn',
+        weeklyChallengeModal: 'closeWeeklyChallengeModalBtn'
     };
     for (const [modalId, closeId] of Object.entries(controls)) {
         const modal = elementById(modalId);
