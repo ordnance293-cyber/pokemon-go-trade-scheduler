@@ -112,17 +112,25 @@ test('copy modal shows the fixed sales notice between its stock count and price 
     for (const exactText of [
         '出售一些色違裝扮,背卡寶可夢',
         '⚠️ 注意事項',
-        '✨ 首飾 +200',
-        '✨ 亮晶晶寶可夢 +50',
-        '付款方式 ✅Linepay ✅8591實收'
+        '✨ 我使用亮晶晶首飾 +400',
+        '✨ 你使用亮晶晶首飾 +200',
+        '✨ 亮晶晶寶可夢 免費',
+        '✨ 未開圖 +100',
+        '✨ 亮晶晶首飾加價較高，主要以可直接交換為主，不希望等待首飾',
+        '付款方式',
+        '✅Linepay',
+        '✅8591實收'
     ]) assert.match(notice, new RegExp(exactText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    for (const oldText of ['✨ 首飾 +200', '✨ 亮晶晶寶可夢 +50', '✨ 我使用亮晶晶首飾 +300']) {
+        assert.doesNotMatch(notice, new RegExp(oldText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    }
 });
 
 test('stock copy preamble has the exact fixed sales information', () => {
     const { getStockCopyPreamble } = loadHelpers();
     assert.equal(
         getStockCopyPreamble(),
-        '出售一些色違裝扮,背卡寶可夢\n\n⚠️ 注意事項\n✨ 首飾 +200\n✨ 亮晶晶寶可夢 +50\n付款方式 ✅Linepay ✅8591實收'
+        '出售一些色違裝扮,背卡寶可夢\n\n⚠️ 注意事項\n✨ 我使用亮晶晶首飾 +400\n✨ 你使用亮晶晶首飾 +200\n✨ 亮晶晶寶可夢 免費\n✨ 未開圖 +100\n✨ 亮晶晶首飾加價較高，主要以可直接交換為主，不希望等待首飾\n\n付款方式 ✅Linepay ✅8591實收'
     );
 });
 
@@ -146,7 +154,7 @@ test('priced stock remains body-only and full copy wraps it once when prices are
     assert.doesNotMatch(first, /出售一些/);
     assert.equal(
         buildFullStockCopyText(first),
-        '出售一些色違裝扮,背卡寶可夢\n\n⚠️ 注意事項\n✨ 首飾 +200\n✨ 亮晶晶寶可夢 +50\n付款方式 ✅Linepay ✅8591實收\n\n【abcdef｜🟢 有首飾】\n🔥 寶可夢文案｜1隻450元'
+        '出售一些色違裝扮,背卡寶可夢\n\n⚠️ 注意事項\n✨ 我使用亮晶晶首飾 +400\n✨ 你使用亮晶晶首飾 +200\n✨ 亮晶晶寶可夢 免費\n✨ 未開圖 +100\n✨ 亮晶晶首飾加價較高，主要以可直接交換為主，不希望等待首飾\n\n付款方式 ✅Linepay ✅8591實收\n\n【abcdef｜🟢 有首飾】\n🔥 寶可夢文案｜1隻450元'
     );
     const reapplied = buildFullStockCopyText(getCopyPriceResult(groups, '500', groups).text);
     assert.equal(reapplied.match(/出售一些色違裝扮,背卡寶可夢/g)?.length, 1);
