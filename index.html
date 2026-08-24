@@ -122,7 +122,7 @@
                     </select>
                     <div class="relative flex-1 min-w-0 md:flex-none">
                         <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
-                        <input type="text" id="searchInput" placeholder="搜尋寶可夢名稱..." class="w-full md:w-56 pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-sm transition-all">
+                        <input type="text" id="searchInput" placeholder="搜尋寶可夢／客人名稱..." class="w-full md:w-56 pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-sm transition-all">
                         <button id="clearSearchBtn" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500 hidden text-lg font-black leading-none focus:outline-none">&times;</button>
                     </div>
                 </div>
@@ -1679,13 +1679,22 @@
         });
         clearSearchBtn.addEventListener('click', clearSearch);
 
+        function inventoryItemMatchesSearch(item, searchText) {
+            const term = String(searchText || '').trim().toLowerCase();
+            if (!term) return true;
+
+            const pokemonName = String(item?.name || '').toLowerCase();
+            const partnerName = String(item?.partner || '').toLowerCase();
+            return pokemonName.includes(term) || partnerName.includes(term);
+        }
+
         function render() {
             const list = document.getElementById('pokemonList'); list.innerHTML = '';
             const searchText = searchInput.value.trim().toLowerCase();
 
             let filtered = pokemons.filter(p => {
                 const matchTab = currentTab === 'all' ? true : p.status === currentTab;
-                const matchSearch = String(p.name || '').toLowerCase().includes(searchText);
+                const matchSearch = inventoryItemMatchesSearch(p, searchText);
                 return matchTab && matchSearch;
             });
 
