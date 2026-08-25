@@ -26,7 +26,7 @@ test('manual merge lifecycle is transactional and never automatic', () => {
 });
 
 test('merged completion shares a session and performs complete cleanup', () => {
-  assert.match(script, /type:\s*'merged',groupId,accounts,customerKeys,taskIds/);
+  assert.match(script, /type:\s*'merged',groupId,accounts,customerIdentityVersion:WEEKLY_CUSTOMER_IDENTITY_VERSION,customerKeys,taskIds/);
   assert.match(script, /mode:\s*'merged'/);
   assert.match(script, /peopleCount:\s*4/);
   assert.match(script, /missingPeopleAtCompletion:\s*0/);
@@ -34,6 +34,15 @@ test('merged completion shares a session and performs complete cleanup', () => {
   assert.match(script, /dissolveWeeklyChallengeMergeForTask/);
   assert.match(script, /customerKeys/);
   assert.doesNotMatch(script, /taskIds\?\.length!==2/);
+  assert.match(script, /WEEKLY_CUSTOMER_IDENTITY_VERSION\s*=\s*'raw-exact-v1'/);
+  assert.match(script, /customerIdentityVersion:\s*WEEKLY_CUSTOMER_IDENTITY_VERSION/);
+});
+
+test('legacy sessions and merges derive exact identity from referenced tasks', () => {
+  assert.match(script, /function getWeeklyChallengeRecordCustomerKeys/);
+  assert.match(script, /record\?\.customerIdentityVersion\s*===\s*WEEKLY_CUSTOMER_IDENTITY_VERSION/);
+  assert.match(script, /groupWeeklyChallengeTasksByCustomer\(referencedTasks\)/);
+  assert.match(script, /客人名稱比對規則已更新，請重新開始或重新建立合併組/);
 });
 
 test('UI documents flexible groups, manual selection, and session dedupe', () => {

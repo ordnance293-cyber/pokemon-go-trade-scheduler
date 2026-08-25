@@ -52,16 +52,18 @@ test('weekly challenge weeks run Tuesday through Monday using local dates', () =
 });
 
 test('qualification, FIFO grouping, full account identity, completion and carryover are pure', () => {
-    const h = makeHelpers(['normalizeLuckyTrinket','tradeNeedsWeeklyChallenge','getWeeklyChallengeCompletionKey','sortWeeklyChallengeTasks','normalizeWeeklyChallengeCustomerName','getWeeklyChallengeCustomerKey','groupWeeklyChallengeTasksByCustomer','buildWeeklyChallengeAccountState'],
-        '{ tradeNeedsWeeklyChallenge, getWeeklyChallengeCompletionKey, sortWeeklyChallengeTasks, normalizeWeeklyChallengeCustomerName, getWeeklyChallengeCustomerKey, groupWeeklyChallengeTasksByCustomer, buildWeeklyChallengeAccountState }');
+    const h = makeHelpers(['normalizeLuckyTrinket','tradeNeedsWeeklyChallenge','getWeeklyChallengeCompletionKey','sortWeeklyChallengeTasks','getWeeklyChallengeExactCustomerName','getWeeklyChallengeCustomerKey','groupWeeklyChallengeTasksByCustomer','buildWeeklyChallengeAccountState'],
+        '{ tradeNeedsWeeklyChallenge, getWeeklyChallengeCompletionKey, sortWeeklyChallengeTasks, getWeeklyChallengeExactCustomerName, getWeeklyChallengeCustomerKey, groupWeeklyChallengeTasksByCustomer, buildWeeklyChallengeAccountState }');
     assert.equal(h.tradeNeedsWeeklyChallenge({ luckyTrinket: 'buyer' }), true);
     assert.equal(h.tradeNeedsWeeklyChallenge({ luckyTrinket: 'seller' }), true);
     assert.equal(h.tradeNeedsWeeklyChallenge({ luckyTrinket: 'none' }), false);
     assert.equal(h.tradeNeedsWeeklyChallenge({}), false);
     assert.notEqual(h.getWeeklyChallengeCompletionKey('abcdef111111','2026-08-18'), h.getWeeklyChallengeCompletionKey('abcdef222222','2026-08-18'));
-    assert.equal(h.normalizeWeeklyChallengeCustomerName('Danny Yi'), 'danny yi');
-    assert.equal(h.normalizeWeeklyChallengeCustomerName('danny yi'), h.normalizeWeeklyChallengeCustomerName('  DANNY   YI  '));
-    assert.notEqual(h.normalizeWeeklyChallengeCustomerName('Danny Yi'), h.normalizeWeeklyChallengeCustomerName('Danny YI2'));
+    const exactNames = ['Danny Yi','danny yi','DANNY YI',' Danny Yi','Danny Yi ','Danny  Yi','Danny　Yi','Ｄanny Yi'];
+    assert.equal(h.getWeeklyChallengeExactCustomerName('Danny Yi'), 'Danny Yi');
+    assert.equal(new Set(exactNames.map(h.getWeeklyChallengeExactCustomerName)).size, exactNames.length);
+    const exactSource = extractFunction('getWeeklyChallengeExactCustomerName');
+    for (const forbidden of [/\.normalize\(/,/\.trim\(/,/\.toLowerCase\(/,/\.toLocaleLowerCase\(/,/\.replace\(\/\\s\+/]) assert.doesNotMatch(exactSource, forbidden);
     assert.notEqual(h.getWeeklyChallengeCustomerKey({account:'A',partner:'Danny Yi',id:'1'}), h.getWeeklyChallengeCustomerKey({account:'B',partner:'Danny Yi',id:'2'}));
     assert.notEqual(h.getWeeklyChallengeCustomerKey({account:'A',partner:'',id:'1'}), h.getWeeklyChallengeCustomerKey({account:'A',partner:'',id:'2'}));
     const tasks = Array.from({ length: 6 }, (_, index) => ({ id: String.fromCharCode(102-index), account: 'abcdef111111', partner: `customer ${index}`, createdAt: index < 2 ? 1 : index }));
@@ -83,11 +85,11 @@ test('qualification, FIFO grouping, full account identity, completion and carryo
     assert.equal(h.buildWeeklyChallengeAccountState('abcdef111111', tasks, '2026-08-25', completionMap).active.length, 3);
 });
 
-test('weekly participants group all same-account normalized-name tasks and queue by customer FIFO', () => {
-    const h = makeHelpers(['getWeeklyChallengeCompletionKey','sortWeeklyChallengeTasks','normalizeWeeklyChallengeCustomerName','getWeeklyChallengeCustomerKey','groupWeeklyChallengeTasksByCustomer','buildWeeklyChallengeAccountState'],
-        '{ groupWeeklyChallengeTasksByCustomer, buildWeeklyChallengeAccountState }');
+test('weekly participants group only same-account exact-name tasks and queue by customer FIFO', () => {
+    const h = makeHelpers(['getWeeklyChallengeCompletionKey','sortWeeklyChallengeTasks','getWeeklyChallengeExactCustomerName','getWeeklyChallengeCustomerKey','groupWeeklyChallengeTasksByCustomer','buildWeeklyChallengeAccountState'],
+        '{ getWeeklyChallengeCustomerKey, groupWeeklyChallengeTasksByCustomer, buildWeeklyChallengeAccountState }');
     const task = (id, partner, createdAt, account='A') => ({id, account, partner, createdAt, pokemonLabel:id});
-    const danny = [task('d1','Danny Yi',1), task('d2','  DANNY   YI ',3), task('d3','danny yi',4)];
+    const danny = [task('d1','Danny Yi',1), task('d2','Danny Yi',3), task('d3','Danny Yi',4)];
     let state = h.buildWeeklyChallengeAccountState('A', danny, 'week', new Map());
     assert.equal(state.customerCount, 1); assert.equal(state.peopleCount, 2); assert.equal(state.missingPeople, 2); assert.equal(state.mergeEligible, true);
     assert.deepEqual(state.activeCustomers[0].taskIds, ['d1','d2','d3']);
@@ -96,6 +98,23 @@ test('weekly participants group all same-account normalized-name tasks and queue
     assert.deepEqual(state.activeCustomers.map(c=>c.partner), ['Danny Yi','Alice','Bob']);
     assert.deepEqual(state.queuedCustomers.map(c=>c.partner), ['Carol']);
     assert.deepEqual(h.groupWeeklyChallengeTasksByCustomer([task('d1','Danny',1),task('a','Alice',2),task('d2','Danny',3)]).map(c=>c.partner), ['Danny','Alice']);
+    for (const different of ['danny yi','Danny  Yi','Danny Yi ','Ｄanny Yi']) {
+        const distinct = h.buildWeeklyChallengeAccountState('A',[task('x','Danny Yi',1),task('y',different,2)],'week',new Map());
+        assert.equal(distinct.customerCount,2); assert.equal(distinct.peopleCount,3); assert.equal(distinct.mergeEligible,false);
+    }
+    const keys=[h.getWeeklyChallengeCustomerKey(task('a','Danny Yi',1)),h.getWeeklyChallengeCustomerKey(task('b','Danny Yi',2,'B'))]; assert.notEqual(keys[0],keys[1]);
+});
+
+test('exact customer expansion excludes differently cased and spaced names', () => {
+    const h = makeHelpers(['sortWeeklyChallengeTasks','getWeeklyChallengeExactCustomerName','getWeeklyChallengeCustomerKey','expandWeeklyChallengeCustomerTasks'],
+        '{ getWeeklyChallengeCustomerKey, expandWeeklyChallengeCustomerTasks }');
+    const tasks=[{id:'a',account:'A',partner:'Danny Yi'},{id:'b',account:'A',partner:'Danny Yi'},{id:'c',account:'A',partner:'danny yi'}];
+    assert.deepEqual(h.expandWeeklyChallengeCustomerTasks([h.getWeeklyChallengeCustomerKey(tasks[0])],tasks).map(task=>task.id),['a','b']);
+});
+
+test('partner input validation preserves the exact raw value for arrange and edit', () => {
+    assert.match(script, /const rawPartner = document\.getElementById\('partnerInput'\)\.value;[\s\S]*?if \(!rawPartner\.trim\(\)\)[\s\S]*?const partner = rawPartner;/);
+    assert.match(script, /const rawPartner = editTradePartnerInput\.value;[\s\S]*?if \(!rawPartner\.trim\(\)\)[\s\S]*?const partner = rawPartner;/);
 });
 
 test('persistent collections, one listener each, lifecycle transactions and backfill exist', () => {

@@ -33,7 +33,7 @@ test('edit selection is isolated, toggleable, and mutually exclusive', () => {
 
 test('save revalidates stale items and delegates to transaction-safe trinket editing', () => {
     const handler = script.match(/saveEditTradeBtn\.addEventListener\('click', async \(\) => \{([\s\S]*?)\n        \}\);/)?.[1] || '';
-    assert.match(handler, /editTradePartnerInput\.value\.trim\(\)/);
+    assert.match(handler, /const rawPartner = editTradePartnerInput\.value;[\s\S]*?!rawPartner\.trim\(\)[\s\S]*?const partner = rawPartner/);
     assert.match(handler, /pokemons\.find\(p => p\.id === editingTradeId\)/);
     assert.match(handler, /!item \|\| item\.status !== 'trading'/);
     assert.match(handler, /await updateLuckyTrinketTrade\(item, partner, editingLuckyTrinket\)/);
