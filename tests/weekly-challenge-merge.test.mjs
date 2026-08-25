@@ -26,7 +26,7 @@ test('manual merge lifecycle is transactional and never automatic', () => {
 });
 
 test('merged completion shares a session and performs complete cleanup', () => {
-  assert.match(script, /\['merged', weekId, groupId\]/);
+  assert.match(script, /type:\s*'merged',groupId,accounts,taskIds/);
   assert.match(script, /mode:\s*'merged'/);
   assert.match(script, /peopleCount:\s*4/);
   assert.match(script, /missingPeopleAtCompletion:\s*0/);
@@ -40,4 +40,12 @@ test('UI documents flexible groups, manual selection, and session dedupe', () =>
   assert.match(script, /建立合併組/);
   assert.match(script, /拆除合併/);
   assert.match(script, /new Set\(.*sessionId/s);
+});
+
+test('merged groups have transactional start, cancellation, and started cleanup', () => {
+  assert.match(script, /async function startMergedWeeklyChallengeGroup/);
+  assert.match(script, /🟦 合併解題中/);
+  assert.match(script, /此合併組已在解題中/);
+  assert.match(script, /startedMembershipRefs/);
+  assert.match(script, /transaction\.delete\(startedSessionRef\)/);
 });

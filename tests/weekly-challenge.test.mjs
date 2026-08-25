@@ -86,7 +86,7 @@ test('persistent collections, one listener each, lifecycle transactions and back
     assert.match(script, /source: 'legacy-trading-backfill'/);
     assert.match(script, /status !== 'trading'/);
     const completionSource = extractFunction('completeWeeklyChallengeGroup');
-    assert.match(completionSource, /taskIds\.length < 1 \|\| taskIds\.length > 3/);
+    assert.match(completionSource, /taskIds\.length\s*<\s*1\s*\|\|\s*taskIds\.length\s*>\s*3/);
     assert.match(completionSource, /runTransaction/);
     assert.match(extractFunction('getWeeklyChallengeCompletionRef'), /weeklyChallengeCompletions/);
     assert.match(script, /weeklyChallengeCompletedWeekId[\s\S]*?weeklyChallengeCompletedAt/);
@@ -105,4 +105,18 @@ test('weekly challenge utility UI and refresh controls exist', () => {
     assert.match(script, /他出首飾/);
     assert.match(script, /visibilitychange/);
     assert.match(script, /window\.addEventListener\('focus'/);
+});
+
+test('weekly challenge uses a persistent two-step started workflow', () => {
+    assert.match(script, /weeklyChallengeStartedSessions/);
+    assert.match(script, /weeklyChallengeStartedMemberships/);
+    assert.equal((script.match(/onSnapshot\(collection\(db, "weeklyChallengeStartedSessions"\)/g) || []).length, 1);
+    assert.match(script, /function getWeeklyChallengeStartedMembershipKey/);
+    assert.match(script, /async function startWeeklyChallengeGroup/);
+    assert.match(script, /async function cancelWeeklyChallengeStart/);
+    assert.match(script, /開始解週間/);
+    assert.match(script, /本週週間已完成/);
+    assert.match(script, /🟦 解題中/);
+    assert.doesNotMatch(script, /直接完成週間/);
+    assert.match(extractFunction('completeWeeklyChallengeGroup'), /請先按「開始解週間」/);
 });
