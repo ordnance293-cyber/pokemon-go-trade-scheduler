@@ -437,6 +437,9 @@
         let weeklyChallengeCompletionMap = new Map();
         let weeklyChallengeMergeGroupMap = new Map();
         let weeklyChallengeStartedSessionMap = new Map();
+        let weeklyChallengeFriendStatusMap = new Map();
+        let weeklyChallengeFriendStatusSnapshotReady = false;
+        const weeklyChallengeFriendStatusBusyKeys = new Set();
         let selectedWeeklyMergeAccounts = new Set();
         let isWeeklyChallengeBusy = false;
         let weeklyChallengeTasksSnapshotReady = false;
@@ -807,6 +810,26 @@
             return String(value ?? '');
         }
 
+        function getWeeklyChallengeFriendStatusKey(account, partner) {
+            return JSON.stringify([
+                String(account ?? ''),
+                getWeeklyChallengeExactCustomerName(partner)
+            ]);
+        }
+
+        function getWeeklyChallengeFriendStatusDocumentId(account, partner) {
+            return encodeURIComponent(getWeeklyChallengeFriendStatusKey(account, partner));
+        }
+
+        function getWeeklyChallengeFriendStatusRef(account, partner) {
+            return doc(db, 'weeklyChallengeFriendStatuses', getWeeklyChallengeFriendStatusDocumentId(account, partner));
+        }
+
+        function isWeeklyChallengeFriendAdded(account, partner) {
+            if (!weeklyChallengeFriendStatusSnapshotReady) return false;
+            return weeklyChallengeFriendStatusMap.has(getWeeklyChallengeFriendStatusDocumentId(account, partner));
+        }
+
         function getWeeklyChallengeCustomerKey(task) {
             const account = String(task?.account ?? '');
             const partner = getWeeklyChallengeExactCustomerName(task?.partner);
@@ -868,10 +891,105 @@
             row.append(heading, pokemon); return row;
         }
 
+        async function markWeeklyChallengeFriendAdded(customer, button) {
+            const partner = getWeeklyChallengeExactCustomerName(customer.partner);
+            if (partner === '') return;
+            const id = getWeeklyChallengeFriendStatusDocumentId(customer.account, partner);
+            if (weeklyChallengeFriendStatusBusyKeys.has(id)) return;
+            weeklyChallengeFriendStatusBusyKeys.add(id);
+            button.disabled = true;
+            button.textContent = '處理中...';
+            try {
+                const now = Date.now();
+                await setDoc(getWeeklyChallengeFriendStatusRef(customer.account, partner), {
+                    state: 'added',
+                    identityVersion: WEEKLY_CUSTOMER_IDENTITY_VERSION,
+                    addedAt: now,
+                    updatedAt: now,
+                    source: 'runtime'
+                });
+                weeklyChallengeFriendStatusMap.set(id, { state: 'added' });
+            } catch (error) {
+                console.error('更新週間好友狀態失敗：', error);
+                button.disabled = false;
+                button.textContent = '標記已加';
+                alert('好友狀態更新失敗，請稍後再試');
+            } finally {
+                weeklyChallengeFriendStatusBusyKeys.delete(id);
+                refreshWeeklyChallengeIfOpen();
+            }
+        }
+
+        async function undoWeeklyChallengeFriendAdded(customer, button) {
+            const partner = getWeeklyChallengeExactCustomerName(customer.partner);
+            if (partner === '') return;
+            const id = getWeeklyChallengeFriendStatusDocumentId(customer.account, partner);
+            if (weeklyChallengeFriendStatusBusyKeys.has(id)) return;
+            weeklyChallengeFriendStatusBusyKeys.add(id);
+            button.disabled = true;
+            button.textContent = '處理中...';
+            try {
+                await deleteDoc(getWeeklyChallengeFriendStatusRef(customer.account, partner));
+                weeklyChallengeFriendStatusMap.delete(id);
+            } catch (error) {
+                console.error('更新週間好友狀態失敗：', error);
+                button.disabled = false;
+                button.textContent = '退回';
+                alert('好友狀態更新失敗，請稍後再試');
+            } finally {
+                weeklyChallengeFriendStatusBusyKeys.delete(id);
+                refreshWeeklyChallengeIfOpen();
+            }
+        }
+
+        function createWeeklyChallengeFriendStatusControls(customer) {
+            const controls = document.createElement('div');
+            controls.className = 'flex shrink-0 flex-wrap items-center justify-end gap-2';
+            const partner = getWeeklyChallengeExactCustomerName(customer.partner);
+            if (partner === '') {
+                const note = document.createElement('span');
+                note.className = 'text-xs font-bold text-gray-400';
+                note.textContent = '未填買家，無法標記好友';
+                controls.appendChild(note);
+                return controls;
+            }
+            const id = getWeeklyChallengeFriendStatusDocumentId(customer.account, partner);
+            const busy = weeklyChallengeFriendStatusBusyKeys.has(id);
+            if (!weeklyChallengeFriendStatusSnapshotReady) {
+                const syncing = document.createElement('button');
+                syncing.type = 'button'; syncing.disabled = true;
+                syncing.className = 'min-h-11 rounded-xl bg-gray-100 px-3 py-2 text-xs font-black text-gray-500';
+                syncing.textContent = '好友狀態同步中';
+                controls.appendChild(syncing);
+            } else if (isWeeklyChallengeFriendAdded(customer.account, partner)) {
+                const badge = document.createElement('span');
+                badge.className = 'rounded-full bg-green-100 px-3 py-2 text-xs font-black text-green-700';
+                badge.textContent = '✅ 已加好友';
+                const undo = document.createElement('button');
+                undo.type = 'button'; undo.disabled = busy;
+                undo.className = 'min-h-11 rounded-xl border border-red-300 bg-white px-3 py-2 text-sm font-black text-red-600 disabled:opacity-60';
+                undo.textContent = busy ? '處理中...' : '退回';
+                undo.setAttribute('aria-label', '退回未加好友狀態');
+                undo.addEventListener('click', () => undoWeeklyChallengeFriendAdded(customer, undo));
+                controls.append(badge, undo);
+            } else {
+                const mark = document.createElement('button');
+                mark.type = 'button'; mark.disabled = busy;
+                mark.className = 'min-h-11 rounded-xl bg-amber-500 px-3 py-2 text-sm font-black text-white disabled:opacity-60';
+                mark.textContent = busy ? '處理中...' : '標記已加';
+                mark.setAttribute('aria-label', '標記買家已加好友');
+                mark.addEventListener('click', () => markWeeklyChallengeFriendAdded(customer, mark));
+                controls.appendChild(mark);
+            }
+            return controls;
+        }
+
         function createWeeklyChallengeCustomerRow(customer) {
             const row = document.createElement('div'); row.className = 'rounded-xl border border-gray-100 bg-gray-50 p-3';
+            const header = document.createElement('div'); header.className = 'flex min-w-0 flex-wrap items-center justify-between gap-2';
             const heading = document.createElement('p'); heading.className = 'whitespace-pre-wrap text-sm font-black text-gray-800'; heading.textContent = `👤 ${customer.partner || '未填買家'}｜${customer.tasks.length}筆交換`;
-            row.appendChild(heading);
+            header.append(heading, createWeeklyChallengeFriendStatusControls(customer));
+            row.appendChild(header);
             customer.tasks.forEach(task => { const trade = document.createElement('p'); trade.className = 'mt-1 pl-3 text-xs font-bold text-gray-500'; trade.textContent = `• ${task.pokemonLabel || '未命名寶可夢'}｜${normalizeLuckyTrinket(task.luckyTrinket) === 'seller' ? '我出首飾' : '他出首飾'}`; row.appendChild(trade); });
             return row;
         }
@@ -1369,6 +1487,21 @@
             reconcileLegacyDailyTradeCompletionLocks().catch(error => console.error('舊每日交換紀錄回填失敗：', error));
             refreshWeeklyChallengeIfOpen();
         }, error => console.error('讀取週間挑戰名單失敗：', error));
+
+        onSnapshot(collection(db, "weeklyChallengeFriendStatuses"), (snapshot) => {
+            const nextStatuses = new Map();
+            snapshot.docs.forEach(snapshotDoc => {
+                try {
+                    const status = snapshotDoc.data();
+                    if (status && status.state === 'added') nextStatuses.set(snapshotDoc.id, status);
+                } catch (error) {
+                    console.warn('忽略格式錯誤的週間好友狀態：', snapshotDoc.id, error);
+                }
+            });
+            weeklyChallengeFriendStatusMap = nextStatuses;
+            weeklyChallengeFriendStatusSnapshotReady = true;
+            refreshWeeklyChallengeIfOpen();
+        }, error => console.error('讀取週間好友狀態失敗：', error));
 
         onSnapshot(collection(db, "weeklyChallengeMergeGroups"), (snapshot) => {
             weeklyChallengeMergeGroupMap = new Map(snapshot.docs.map(snapshotDoc => [snapshotDoc.id, { id: snapshotDoc.id, ...snapshotDoc.data() }]));
