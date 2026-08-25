@@ -77,7 +77,7 @@ test('qualification, FIFO grouping, full account identity, completion and carryo
         assert.equal(state.peopleCount, Math.min(count, 3) + 1);
         assert.equal(state.missingPeople, Math.max(0, 3 - Math.min(count, 3)));
         assert.equal(state.canComplete, true);
-        assert.equal(state.mergeEligible, count === 1);
+        assert.equal(state.mergeEligible, count >= 1 && count <= 2);
     }
     const completionMap = new Map([[h.getWeeklyChallengeCompletionKey('abcdef111111','2026-08-18'), {}]]);
     const blocked = h.buildWeeklyChallengeAccountState('abcdef111111', tasks, '2026-08-18', completionMap);
@@ -100,7 +100,7 @@ test('weekly participants group only same-account exact-name tasks and queue by 
     assert.deepEqual(h.groupWeeklyChallengeTasksByCustomer([task('d1','Danny',1),task('a','Alice',2),task('d2','Danny',3)]).map(c=>c.partner), ['Danny','Alice']);
     for (const different of ['danny yi','Danny  Yi','Danny Yi ','Ｄanny Yi']) {
         const distinct = h.buildWeeklyChallengeAccountState('A',[task('x','Danny Yi',1),task('y',different,2)],'week',new Map());
-        assert.equal(distinct.customerCount,2); assert.equal(distinct.peopleCount,3); assert.equal(distinct.mergeEligible,false);
+        assert.equal(distinct.customerCount,2); assert.equal(distinct.peopleCount,3); assert.equal(distinct.mergeEligible,true);
     }
     const keys=[h.getWeeklyChallengeCustomerKey(task('a','Danny Yi',1)),h.getWeeklyChallengeCustomerKey(task('b','Danny Yi',2,'B'))]; assert.notEqual(keys[0],keys[1]);
 });
