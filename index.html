@@ -595,6 +595,39 @@
             return String(account || '').slice(0, 6);
         }
 
+        function getWeeklyChallengeAccountDisplayName(account) {
+            return getLuckyTrinketAccountDisplayName(account);
+        }
+
+        function getWeeklyChallengeAccountCopyText(account) {
+            return String(account ?? '');
+        }
+
+        async function copyWeeklyChallengeAccountCredentials(account, button) {
+            const fullAccount = getWeeklyChallengeAccountCopyText(account);
+            if (!fullAccount) {
+                alert('找不到完整帳號密碼');
+                return;
+            }
+            const originalText = button.textContent;
+            button.disabled = true;
+            try {
+                if (!navigator.clipboard?.writeText) throw new Error('CLIPBOARD_UNAVAILABLE');
+                await navigator.clipboard.writeText(fullAccount);
+                button.textContent = '已複製';
+                setTimeout(() => {
+                    if (button.isConnected) {
+                        button.textContent = originalText;
+                        button.disabled = false;
+                    }
+                }, 1000);
+            } catch (error) {
+                button.textContent = originalText;
+                button.disabled = false;
+                alert('複製失敗，請再試一次');
+            }
+        }
+
         function accountHasLuckyTrinket(accountName, inventoryItems, cycle = getLuckyTrinketCycleForDate(getTodayStr()), lockMap = luckyTrinketCycleLockMap) {
             if (!cycle) return false;
             const lock = lockMap.get(getLuckyTrinketCycleLockKey(accountName, cycle.id));
@@ -847,6 +880,30 @@
             const button = document.createElement('button'); button.type = 'button'; button.className = `min-h-11 flex-1 rounded-xl ${tone} px-4 py-2 text-sm font-black text-white disabled:opacity-60`; button.textContent = label; return button;
         }
 
+        function createWeeklyChallengeAccountHeader(account) {
+            const container = document.createElement('div');
+            const header = document.createElement('div');
+            header.className = 'mt-2 flex min-w-0 flex-wrap items-center justify-between gap-2';
+            const displayName = getWeeklyChallengeAccountDisplayName(account);
+            const heading = document.createElement('h3');
+            heading.className = 'min-w-0 font-mono font-black text-indigo-800';
+            heading.textContent = `【${displayName}】`;
+            const copyButton = document.createElement('button');
+            copyButton.type = 'button';
+            copyButton.className = 'min-h-11 shrink-0 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-black text-white transition active:scale-95 disabled:opacity-60';
+            copyButton.textContent = '複製帳密';
+            copyButton.setAttribute('aria-label', '複製完整帳號密碼');
+            copyButton.addEventListener('click', () => {
+                copyWeeklyChallengeAccountCredentials(account, copyButton);
+            });
+            header.append(heading, copyButton);
+            const self = document.createElement('p');
+            self.className = 'text-sm font-bold';
+            self.textContent = `👤 自己｜${displayName}`;
+            container.append(header, self);
+            return container;
+        }
+
         function renderWeeklyChallenge() {
             const weekId = getWeeklyChallengeWeekId(getTodayStr());
             const range = getWeeklyChallengeWeekRange(weekId);
@@ -871,7 +928,7 @@
                 const card = document.createElement('section'); card.className = 'rounded-2xl border-2 border-cyan-300 bg-cyan-50 p-4 shadow-sm';
                 const heading = document.createElement('h3'); heading.className = 'font-black text-cyan-900'; heading.textContent = '🔗 已合併｜4/4'; card.appendChild(heading);
                 if (started) { const badge=document.createElement('p'); badge.className='mt-2 rounded-xl bg-blue-100 p-2 text-sm font-black text-blue-800'; badge.textContent='🟦 合併解題中'; card.appendChild(badge); }
-                (group.accounts || []).forEach((account, index) => { if (index) { const plus=document.createElement('p'); plus.className='py-2 text-center font-black'; plus.textContent='＋'; card.appendChild(plus); } const title=document.createElement('p'); title.className='mt-2 font-mono font-black'; title.textContent=`【${account.slice(0,6)}】`; card.appendChild(title); const self=document.createElement('p'); self.className='text-sm font-bold'; self.textContent=`👤 自己｜${account.slice(0,6)}`; card.appendChild(self); const customerKey=getWeeklyChallengeRecordCustomerKeys(group)[index]; const customerTasks=customerKey ? expandWeeklyChallengeCustomerTasks([customerKey]) : (group.taskIds || []).map(id=>weeklyChallengeTaskMap.get(id)).filter(task=>task?.account===account); groupWeeklyChallengeTasksByCustomer(customerTasks).forEach(customer=>card.appendChild(createWeeklyChallengeCustomerRow(customer))); });
+                (group.accounts || []).forEach((account, index) => { if (index) { const plus=document.createElement('p'); plus.className='py-2 text-center font-black'; plus.textContent='＋'; card.appendChild(plus); } card.appendChild(createWeeklyChallengeAccountHeader(account)); const customerKey=getWeeklyChallengeRecordCustomerKeys(group)[index]; const customerTasks=customerKey ? expandWeeklyChallengeCustomerTasks([customerKey]) : (group.taskIds || []).map(id=>weeklyChallengeTaskMap.get(id)).filter(task=>task?.account===account); groupWeeklyChallengeTasksByCustomer(customerTasks).forEach(customer=>card.appendChild(createWeeklyChallengeCustomerRow(customer))); });
                 const actions=document.createElement('div'); actions.className='mt-3 flex flex-wrap gap-2';
                 const dismantle=weeklyActionButton('拆除合併','bg-gray-600'); dismantle.addEventListener('click',()=>dismantleWeeklyChallengeMergeGroup(group.id,dismantle)); actions.appendChild(dismantle);
                 if (started) { const cancel=weeklyActionButton('取消開始','bg-amber-600'); cancel.addEventListener('click',()=>cancelWeeklyChallengeStart(started.id,cancel)); const complete=weeklyActionButton('本週週間已完成','bg-green-600'); complete.addEventListener('click',()=>completeMergedWeeklyChallengeGroup(group.id,complete,started.id)); actions.append(cancel,complete); }
@@ -880,8 +937,8 @@
             });
             states.filter(state => !mergedAccounts.has(state.account) || state.queue.length).forEach(state => {
                 const started=findWeeklyChallengeStartedSessionForAccount(state.account);
-                const card=document.createElement('section'); card.className='rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm'; const title=document.createElement('h3'); title.className='font-mono font-black text-indigo-800'; title.textContent=`【${state.account.slice(0,6)}】`; card.appendChild(title);
-                if (!state.completed && !mergedAccounts.has(state.account)) { if(started){const badge=document.createElement('p');badge.className='mt-2 rounded-xl bg-blue-100 p-2 text-sm font-black text-blue-800';badge.textContent='🟦 解題中';card.appendChild(badge);} const self=document.createElement('p'); self.className='text-sm font-bold'; self.textContent=`👤 自己｜${state.account.slice(0,6)}`; card.appendChild(self); state.activeCustomers.forEach(customer=>card.appendChild(createWeeklyChallengeCustomerRow(customer))); const status=document.createElement('p'); status.className='mt-2 text-sm font-black'; status.textContent=state.peopleCount===2?'🟡 2/4｜缺2人':state.peopleCount===3?'🟡 3/4｜缺1人':'🟢 4/4｜人數已滿'; card.appendChild(status); if(state.missingPeople&&!started){const note=document.createElement('p');note.className='text-xs font-bold text-amber-700';note.textContent='人數未滿，但可以直接解週間';card.appendChild(note);} const actions=document.createElement('div');actions.className='mt-3 flex flex-wrap gap-2'; if(state.mergeEligible&&!started){const select=weeklyActionButton(selectedWeeklyMergeAccounts.has(state.account)?'✓ 已選擇':'選擇合併','bg-amber-500');select.addEventListener('click',()=>toggleWeeklyMergeAccount(state.account));actions.appendChild(select);} if(started){const cancel=weeklyActionButton('取消開始','bg-amber-600');cancel.addEventListener('click',()=>cancelWeeklyChallengeStart(started.id,cancel));const complete=weeklyActionButton('本週週間已完成','bg-green-600');complete.addEventListener('click',()=>completeWeeklyChallengeGroup(state.account,weekId,state.activeCustomers.map(customer=>customer.key),complete,started.id));actions.append(cancel,complete);}else{const start=weeklyActionButton('開始解週間','bg-blue-600');start.addEventListener('click',()=>startWeeklyChallengeGroup(state.account,weekId,state.activeCustomers.map(customer=>customer.key),start));actions.appendChild(start);}card.appendChild(actions); }
+                const card=document.createElement('section'); card.className='rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm'; card.appendChild(createWeeklyChallengeAccountHeader(state.account));
+                if (!state.completed && !mergedAccounts.has(state.account)) { if(started){const badge=document.createElement('p');badge.className='mt-2 rounded-xl bg-blue-100 p-2 text-sm font-black text-blue-800';badge.textContent='🟦 解題中';card.appendChild(badge);} state.activeCustomers.forEach(customer=>card.appendChild(createWeeklyChallengeCustomerRow(customer))); const status=document.createElement('p'); status.className='mt-2 text-sm font-black'; status.textContent=state.peopleCount===2?'🟡 2/4｜缺2人':state.peopleCount===3?'🟡 3/4｜缺1人':'🟢 4/4｜人數已滿'; card.appendChild(status); if(state.missingPeople&&!started){const note=document.createElement('p');note.className='text-xs font-bold text-amber-700';note.textContent='人數未滿，但可以直接解週間';card.appendChild(note);} const actions=document.createElement('div');actions.className='mt-3 flex flex-wrap gap-2'; if(state.mergeEligible&&!started){const select=weeklyActionButton(selectedWeeklyMergeAccounts.has(state.account)?'✓ 已選擇':'選擇合併','bg-amber-500');select.addEventListener('click',()=>toggleWeeklyMergeAccount(state.account));actions.appendChild(select);} if(started){const cancel=weeklyActionButton('取消開始','bg-amber-600');cancel.addEventListener('click',()=>cancelWeeklyChallengeStart(started.id,cancel));const complete=weeklyActionButton('本週週間已完成','bg-green-600');complete.addEventListener('click',()=>completeWeeklyChallengeGroup(state.account,weekId,state.activeCustomers.map(customer=>customer.key),complete,started.id));actions.append(cancel,complete);}else{const start=weeklyActionButton('開始解週間','bg-blue-600');start.addEventListener('click',()=>startWeeklyChallengeGroup(state.account,weekId,state.activeCustomers.map(customer=>customer.key),start));actions.appendChild(start);}card.appendChild(actions); }
                 if(state.completed){const done=document.createElement('p');done.className='text-sm font-black text-green-700';done.textContent='✅ 本週週間已完成';card.appendChild(done);} if(state.queue.length){const q=document.createElement('p');q.className='mt-3 border-t pt-3 text-sm font-black text-amber-700';q.textContent=state.completed?`⏳ ${state.queue.length} 位客人等待下週二`:'⏳ 後續候補';card.appendChild(q);state.queuedCustomers.forEach(customer=>card.appendChild(createWeeklyChallengeCustomerRow(customer)));} list.appendChild(card);
             });
             if(selectedWeeklyMergeAccounts.size===2){const chosen=[...selectedWeeklyMergeAccounts];const panel=document.createElement('section');panel.className='rounded-2xl bg-amber-50 p-4 text-center font-bold';panel.textContent=`已選 2 個帳號\n${chosen.map(a=>a.slice(0,6)).join(' + ')}\n2/4 + 2/4 = 4/4`;const create=weeklyActionButton('建立合併組','bg-cyan-600');create.classList.add('mt-3','w-full');create.addEventListener('click',()=>createWeeklyChallengeMergeGroup(create));panel.appendChild(create);list.appendChild(panel);}
