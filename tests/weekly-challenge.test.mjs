@@ -66,7 +66,11 @@ test('qualification, FIFO grouping, full account identity, completion and carryo
         const state = h.buildWeeklyChallengeAccountState('abcdef111111', sorted.slice(0,count), '2026-08-18', new Map());
         assert.equal(state.active.length, Math.min(count, 3));
         assert.equal(state.queue.length, Math.max(count - 3, 0));
-        assert.equal(state.ready, count >= 3);
+        assert.equal(state.customerCount, Math.min(count, 3));
+        assert.equal(state.peopleCount, Math.min(count, 3) + 1);
+        assert.equal(state.missingPeople, Math.max(0, 3 - Math.min(count, 3)));
+        assert.equal(state.canComplete, true);
+        assert.equal(state.mergeEligible, count === 1);
     }
     const completionMap = new Map([[h.getWeeklyChallengeCompletionKey('abcdef111111','2026-08-18'), {}]]);
     const blocked = h.buildWeeklyChallengeAccountState('abcdef111111', tasks, '2026-08-18', completionMap);
@@ -82,7 +86,7 @@ test('persistent collections, one listener each, lifecycle transactions and back
     assert.match(script, /source: 'legacy-trading-backfill'/);
     assert.match(script, /status !== 'trading'/);
     const completionSource = extractFunction('completeWeeklyChallengeGroup');
-    assert.match(completionSource, /taskIds\.length !== 3/);
+    assert.match(completionSource, /taskIds\.length < 1 \|\| taskIds\.length > 3/);
     assert.match(completionSource, /runTransaction/);
     assert.match(extractFunction('getWeeklyChallengeCompletionRef'), /weeklyChallengeCompletions/);
     assert.match(script, /weeklyChallengeCompletedWeekId[\s\S]*?weeklyChallengeCompletedAt/);
@@ -93,8 +97,9 @@ test('weekly challenge utility UI and refresh controls exist', () => {
     for (const id of ['openWeeklyChallengeBtn','weeklyChallengeModal','weeklyChallengeWeekLabel','weeklyChallengeSummary','weeklyChallengeAccountList','closeWeeklyChallengeModalBtn']) {
         assert.equal((html.match(new RegExp(`id="${id}"`, 'g')) || []).length, 1, id);
     }
-    assert.match(script, /本組週間完成/);
-    assert.match(script, /還差\$\{3 - state\.active\.length\}人/);
+    assert.match(script, /2\/4｜缺2人/);
+    assert.match(script, /3\/4｜缺1人/);
+    assert.match(script, /4\/4｜人數已滿/);
     assert.match(script, /等待下週二/);
     assert.match(script, /我出首飾/);
     assert.match(script, /他出首飾/);
