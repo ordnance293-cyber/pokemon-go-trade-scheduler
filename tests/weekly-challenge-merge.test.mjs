@@ -26,12 +26,14 @@ test('manual merge lifecycle is transactional and never automatic', () => {
 });
 
 test('merged completion shares a session and performs complete cleanup', () => {
-  assert.match(script, /type:\s*'merged',groupId,accounts,taskIds/);
+  assert.match(script, /type:\s*'merged',groupId,accounts,customerKeys,taskIds/);
   assert.match(script, /mode:\s*'merged'/);
   assert.match(script, /peopleCount:\s*4/);
   assert.match(script, /missingPeopleAtCompletion:\s*0/);
   assert.match(script, /transaction\.delete\(groupRef\)/);
   assert.match(script, /dissolveWeeklyChallengeMergeForTask/);
+  assert.match(script, /customerKeys/);
+  assert.doesNotMatch(script, /taskIds\?\.length!==2/);
 });
 
 test('UI documents flexible groups, manual selection, and session dedupe', () => {

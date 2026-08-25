@@ -52,14 +52,19 @@ test('weekly challenge weeks run Tuesday through Monday using local dates', () =
 });
 
 test('qualification, FIFO grouping, full account identity, completion and carryover are pure', () => {
-    const h = makeHelpers(['normalizeLuckyTrinket','tradeNeedsWeeklyChallenge','getWeeklyChallengeCompletionKey','sortWeeklyChallengeTasks','buildWeeklyChallengeAccountState'],
-        '{ tradeNeedsWeeklyChallenge, getWeeklyChallengeCompletionKey, sortWeeklyChallengeTasks, buildWeeklyChallengeAccountState }');
+    const h = makeHelpers(['normalizeLuckyTrinket','tradeNeedsWeeklyChallenge','getWeeklyChallengeCompletionKey','sortWeeklyChallengeTasks','normalizeWeeklyChallengeCustomerName','getWeeklyChallengeCustomerKey','groupWeeklyChallengeTasksByCustomer','buildWeeklyChallengeAccountState'],
+        '{ tradeNeedsWeeklyChallenge, getWeeklyChallengeCompletionKey, sortWeeklyChallengeTasks, normalizeWeeklyChallengeCustomerName, getWeeklyChallengeCustomerKey, groupWeeklyChallengeTasksByCustomer, buildWeeklyChallengeAccountState }');
     assert.equal(h.tradeNeedsWeeklyChallenge({ luckyTrinket: 'buyer' }), true);
     assert.equal(h.tradeNeedsWeeklyChallenge({ luckyTrinket: 'seller' }), true);
     assert.equal(h.tradeNeedsWeeklyChallenge({ luckyTrinket: 'none' }), false);
     assert.equal(h.tradeNeedsWeeklyChallenge({}), false);
     assert.notEqual(h.getWeeklyChallengeCompletionKey('abcdef111111','2026-08-18'), h.getWeeklyChallengeCompletionKey('abcdef222222','2026-08-18'));
-    const tasks = Array.from({ length: 6 }, (_, index) => ({ id: String.fromCharCode(102-index), account: 'abcdef111111', createdAt: index < 2 ? 1 : index }));
+    assert.equal(h.normalizeWeeklyChallengeCustomerName('Danny Yi'), 'danny yi');
+    assert.equal(h.normalizeWeeklyChallengeCustomerName('danny yi'), h.normalizeWeeklyChallengeCustomerName('  DANNY   YI  '));
+    assert.notEqual(h.normalizeWeeklyChallengeCustomerName('Danny Yi'), h.normalizeWeeklyChallengeCustomerName('Danny YI2'));
+    assert.notEqual(h.getWeeklyChallengeCustomerKey({account:'A',partner:'Danny Yi',id:'1'}), h.getWeeklyChallengeCustomerKey({account:'B',partner:'Danny Yi',id:'2'}));
+    assert.notEqual(h.getWeeklyChallengeCustomerKey({account:'A',partner:'',id:'1'}), h.getWeeklyChallengeCustomerKey({account:'A',partner:'',id:'2'}));
+    const tasks = Array.from({ length: 6 }, (_, index) => ({ id: String.fromCharCode(102-index), account: 'abcdef111111', partner: `customer ${index}`, createdAt: index < 2 ? 1 : index }));
     const sorted = h.sortWeeklyChallengeTasks(tasks);
     assert.deepEqual(sorted.slice(0, 2).map(x => x.id), ['e','f']);
     for (const count of [1,2,3,4,6]) {
@@ -78,6 +83,21 @@ test('qualification, FIFO grouping, full account identity, completion and carryo
     assert.equal(h.buildWeeklyChallengeAccountState('abcdef111111', tasks, '2026-08-25', completionMap).active.length, 3);
 });
 
+test('weekly participants group all same-account normalized-name tasks and queue by customer FIFO', () => {
+    const h = makeHelpers(['getWeeklyChallengeCompletionKey','sortWeeklyChallengeTasks','normalizeWeeklyChallengeCustomerName','getWeeklyChallengeCustomerKey','groupWeeklyChallengeTasksByCustomer','buildWeeklyChallengeAccountState'],
+        '{ groupWeeklyChallengeTasksByCustomer, buildWeeklyChallengeAccountState }');
+    const task = (id, partner, createdAt, account='A') => ({id, account, partner, createdAt, pokemonLabel:id});
+    const danny = [task('d1','Danny Yi',1), task('d2','  DANNY   YI ',3), task('d3','danny yi',4)];
+    let state = h.buildWeeklyChallengeAccountState('A', danny, 'week', new Map());
+    assert.equal(state.customerCount, 1); assert.equal(state.peopleCount, 2); assert.equal(state.missingPeople, 2); assert.equal(state.mergeEligible, true);
+    assert.deepEqual(state.activeCustomers[0].taskIds, ['d1','d2','d3']);
+    state = h.buildWeeklyChallengeAccountState('A', [...danny,task('a1','Alice',2),task('b1','Bob',5),task('b2','Bob',6),task('c1','Carol',7)], 'week', new Map());
+    assert.equal(state.customerCount, 3); assert.equal(state.peopleCount, 4); assert.equal(state.isFull, true);
+    assert.deepEqual(state.activeCustomers.map(c=>c.partner), ['Danny Yi','Alice','Bob']);
+    assert.deepEqual(state.queuedCustomers.map(c=>c.partner), ['Carol']);
+    assert.deepEqual(h.groupWeeklyChallengeTasksByCustomer([task('d1','Danny',1),task('a','Alice',2),task('d2','Danny',3)]).map(c=>c.partner), ['Danny','Alice']);
+});
+
 test('persistent collections, one listener each, lifecycle transactions and backfill exist', () => {
     assert.equal((script.match(/onSnapshot\(collection\(db, "weeklyChallengeTasks"\)/g) || []).length, 1);
     assert.equal((script.match(/onSnapshot\(collection\(db, "weeklyChallengeCompletions"\)/g) || []).length, 1);
@@ -86,7 +106,7 @@ test('persistent collections, one listener each, lifecycle transactions and back
     assert.match(script, /source: 'legacy-trading-backfill'/);
     assert.match(script, /status !== 'trading'/);
     const completionSource = extractFunction('completeWeeklyChallengeGroup');
-    assert.match(completionSource, /taskIds\.length\s*<\s*1\s*\|\|\s*taskIds\.length\s*>\s*3/);
+    assert.match(completionSource, /customerCount/);
     assert.match(completionSource, /runTransaction/);
     assert.match(extractFunction('getWeeklyChallengeCompletionRef'), /weeklyChallengeCompletions/);
     assert.match(script, /weeklyChallengeCompletedWeekId[\s\S]*?weeklyChallengeCompletedAt/);
@@ -105,6 +125,8 @@ test('weekly challenge utility UI and refresh controls exist', () => {
     assert.match(script, /他出首飾/);
     assert.match(script, /visibilitychange/);
     assert.match(script, /window\.addEventListener\('focus'/);
+    assert.match(script, /createWeeklyChallengeCustomerRow/);
+    assert.match(script, /customer\.tasks/);
 });
 
 test('weekly challenge uses a persistent two-step started workflow', () => {
