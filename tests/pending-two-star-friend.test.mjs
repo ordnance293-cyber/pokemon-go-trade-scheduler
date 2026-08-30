@@ -29,7 +29,8 @@ test('weekly completion helper accepts only valid positive numeric timestamps', 
         assert.equal(helper(item), false);
     }
     assert.match(source, /weeklyChallengeCompletedAt/);
-    assert.doesNotMatch(source, /weeklyChallengeTaskId|weeklyChallengeStarted|weeklyChallengeFriendStatus|luckyTrinket|tradeDate|merge/i);
+    assert.doesNotMatch(source, /weeklyChallengeTaskId|weeklyChallengeStarted|weeklyChallengeFriendStatus|tradeDate|merge/i);
+    assert.equal(helper({ luckyTrinketTwoStarFriendCycleId: 'cycle-x' }), true);
 });
 
 test('main pending cards use the shared helper and exact two-star badge', () => {
@@ -66,7 +67,8 @@ test('merged completion marks every surviving member inventory document', () => 
     assert.doesNotMatch(completion, /inventories\[0\]|inventoryRefs\[0\]/);
 });
 
-test('two-star display adds no Firestore collection or listener', () => {
-    for (const forbidden of ['twoStarFriends', 'weeklyChallengeTwoStarStatuses', 'friendshipLevels']) assert.doesNotMatch(script, new RegExp(forbidden, 'i'));
+test('two-star display uses the dedicated pair-cycle collection and inventory marker', () => {
+    assert.equal((script.match(/onSnapshot\(collection\(db, "luckyTrinketTwoStarFriends"\)/g) || []).length, 1);
+    assert.match(extractFunction('hasCompletedWeeklyChallenge'), /luckyTrinketTwoStarFriendCycleId/);
     assert.equal((script.match(/onSnapshot\(query\(collection\(db, "inventory"\)\)/g) || []).length, 1);
 });

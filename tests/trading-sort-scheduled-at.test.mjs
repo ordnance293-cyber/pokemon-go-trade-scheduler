@@ -79,7 +79,7 @@ test('all three new arrange paths write scheduledAt with trading status', () => 
     const arrange = script.match(/document\.getElementById\('confirmTradeBtn'\)\.addEventListener[\s\S]*?const scheduledOverride/)?.[0] || '';
     assert.equal((arrange.match(/const now = Date\.now\(\)/g) || []).length, 3);
     assert.equal((arrange.match(/transaction\.update\(inventoryRef, \{ status: 'trading',[^}]*scheduledAt: now[^}]*\}\)/g) || []).length, 3);
-    assert.match(arrange, /luckyTrinketCycleId: cycle\.id[^}]*weeklyChallengeTaskId: taskRef\.id/);
+    assert.match(arrange, /luckyTrinketCycleId: cycle\.id[^}]*weeklyChallengeTaskId: exemptionSnapshot\.exists\(\) \? deleteField\(\) : taskRef\.id/);
 });
 
 test('editing, maintenance, and completion do not rewrite scheduledAt', () => {
