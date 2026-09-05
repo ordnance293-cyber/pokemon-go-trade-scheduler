@@ -26,7 +26,7 @@ function makeHelpers(names, expression) {
 }
 
 test('pending priority uses a stable sorted copy without changing dates', () => {
-    const sort = makeHelpers(['normalizeLuckyTrinket', 'tradeNeedsWeeklyChallenge', 'comparePendingTradesForDisplay'],
+    const sort = makeHelpers(['normalizeLuckyTrinket', 'isLuckyTrinketTaskCompleted', 'tradeNeedsWeeklyChallenge', 'comparePendingTradesForDisplay'],
         'items => [...items].sort(comparePendingTradesForDisplay)');
     const items = [
         { id: 'a', tradeDate: '2026-08-23', luckyTrinket: 'seller' },

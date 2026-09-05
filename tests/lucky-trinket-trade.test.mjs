@@ -40,7 +40,7 @@ test('arrange modal exposes optional mutually exclusive lucky-trinket controls',
 
 test('opening and saving an arranged trade resets and persists the single selection', () => {
     assert.match(script, /window\.openTrade = \(id, accName\) => \{[\s\S]*?partnerInput'\)\.value = '';[\s\S]*?setLuckyTrinketSelection\(null\);/);
-    assert.match(script, /transaction\.update\(inventoryRef, \{ status: 'trading', partner, tradeDate: autoDate, luckyTrinket: 'seller', luckyTrinketCycleId: cycle\.id,[\s\S]*?weeklyChallengeTaskId: exemptionSnapshot\.exists\(\) \? deleteField\(\) : taskRef\.id/);
+    assert.match(script, /transaction\.update\(inventoryRef, \{ status: 'trading', partner, tradeDate: autoDate, luckyTrinket: 'seller', luckyTrinketTaskCompleted: selectedLuckyTrinketTaskCompleted, luckyTrinketCycleId: cycle\.id,[\s\S]*?weeklyChallengeTaskId: exemptionSnapshot\.exists\(\) \? deleteField\(\) : taskRef\.id/);
 });
 
 test('formatters ignore legacy values and both render locations use their labels', () => {
