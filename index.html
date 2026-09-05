@@ -55,6 +55,7 @@
                 <button id="openAccountManagementBtn" type="button" class="min-h-11 rounded-xl bg-green-600 px-3 py-2 text-sm font-bold text-white shadow-md transition-all hover:bg-green-700 active:scale-95">👤 帳號管理</button>
                 <button id="openScheduleOverviewBtn" type="button" class="min-h-11 rounded-xl bg-orange-500 px-3 py-2 text-sm font-bold text-white shadow-md transition-all hover:bg-orange-600 active:scale-95">📅 待交換清單</button>
                 <button id="openLuckyTrinketStatusBtn" type="button" class="min-h-11 rounded-xl bg-purple-600 px-3 py-2 text-sm font-bold text-white shadow-md transition-all hover:bg-purple-700 active:scale-95">💎 亮晶晶首飾</button>
+                <button id="openLuckyTrinketTaskBtn" type="button" class="min-h-11 rounded-xl bg-amber-600 px-3 py-2 text-sm font-bold text-white shadow-md transition-all hover:bg-amber-700 active:scale-95">📋 首飾任務</button>
                 <button id="openWeeklyChallengeBtn" type="button" class="min-h-11 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-bold text-white shadow-md transition-all hover:bg-indigo-700 active:scale-95">👥 週間挑戰</button>
             </div>
         </div>
@@ -139,6 +140,17 @@
             <div id="weeklyChallengeSummary" class="mt-4 rounded-2xl bg-indigo-50 p-3 text-sm font-bold leading-relaxed text-indigo-900"></div>
             <div id="weeklyChallengeAccountList" class="mt-4 space-y-3"></div>
             <button id="closeWeeklyChallengeModalBtn" type="button" class="mt-5 min-h-11 w-full rounded-2xl bg-gray-100 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-200">關閉</button>
+        </div>
+    </div>
+
+    <div id="luckyTrinketTaskModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="luckyTrinketTaskModalTitle">
+        <div class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl md:p-6">
+            <h2 id="luckyTrinketTaskModalTitle" class="text-xl font-black text-gray-800">📋 首飾任務清單</h2>
+            <p id="luckyTrinketTaskCycleLabel" class="mt-1 text-xs font-bold text-gray-500"></p>
+            <div id="luckyTrinketTaskSummary" class="mt-3 rounded-2xl bg-amber-50 p-3 text-sm font-black text-amber-900"></div>
+            <section class="mt-4"><h3 class="text-base font-black text-amber-700">⏳ 首飾任務未完成</h3><div id="luckyTrinketTaskIncompleteList" class="mt-2 space-y-3"></div></section>
+            <section class="mt-5"><h3 class="text-base font-black text-emerald-700">✅ 首飾任務已完成</h3><div id="luckyTrinketTaskCompleteList" class="mt-2 space-y-3"></div></section>
+            <button id="closeLuckyTrinketTaskModalBtn" type="button" class="mt-5 min-h-11 w-full rounded-2xl bg-gray-100 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-200">關閉</button>
         </div>
     </div>
 
@@ -340,7 +352,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, setDoc, onSnapshot, query, updateDoc, doc, deleteDoc, deleteField, writeBatch, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, setDoc, onSnapshot, query, where, updateDoc, doc, deleteDoc, deleteField, writeBatch, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBG_bVJ6-SxRHPBWyUmQUCICMfsvc9ixg4",
@@ -354,11 +366,12 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        const utilityModals = ['accountManagementModal', 'scheduleOverviewModal', 'luckyTrinketStatusModal', 'weeklyChallengeModal']
+        const utilityModals = ['accountManagementModal', 'scheduleOverviewModal', 'luckyTrinketStatusModal', 'luckyTrinketTaskModal', 'weeklyChallengeModal']
             .map(id => document.getElementById(id));
         const accountManagementModal = document.getElementById('accountManagementModal');
         const scheduleOverviewModal = document.getElementById('scheduleOverviewModal');
         const luckyTrinketStatusModal = document.getElementById('luckyTrinketStatusModal');
+        const luckyTrinketTaskModal = document.getElementById('luckyTrinketTaskModal');
         const weeklyChallengeModal = document.getElementById('weeklyChallengeModal');
 
         function openUtilityModal(targetModal) {
@@ -381,6 +394,10 @@
             renderLuckyTrinketAccounts();
             openUtilityModal(luckyTrinketStatusModal);
         });
+        document.getElementById('openLuckyTrinketTaskBtn').addEventListener('click', () => {
+            renderLuckyTrinketTaskList();
+            openUtilityModal(luckyTrinketTaskModal);
+        });
         document.getElementById('openWeeklyChallengeBtn').addEventListener('click', () => {
             renderWeeklyChallenge();
             openUtilityModal(weeklyChallengeModal);
@@ -388,6 +405,7 @@
         document.getElementById('closeAccountManagementModalBtn').addEventListener('click', () => closeUtilityModal(accountManagementModal));
         document.getElementById('closeScheduleOverviewModalBtn').addEventListener('click', () => closeUtilityModal(scheduleOverviewModal));
         document.getElementById('closeLuckyTrinketStatusBtn').addEventListener('click', () => closeUtilityModal(luckyTrinketStatusModal));
+        document.getElementById('closeLuckyTrinketTaskModalBtn').addEventListener('click', () => closeUtilityModal(luckyTrinketTaskModal));
         document.getElementById('closeWeeklyChallengeModalBtn').addEventListener('click', () => closeUtilityModal(weeklyChallengeModal));
         utilityModals.forEach(modal => modal.addEventListener('click', event => {
             if (event.target === modal) closeUtilityModal(modal);
@@ -453,6 +471,11 @@
         let luckyTrinketCycleLockSnapshotReady = false;
         let legacyLuckyTrinketReconciled = false;
         let luckyTrinketCycleLockMap = new Map();
+        let luckyTrinketAccountTaskMap = new Map();
+        let luckyTrinketAccountTasksSnapshotReady = false;
+        let legacyLuckyTrinketAccountTasksReconciled = false;
+        let editingLuckyTrinketTaskAccountKey = null;
+        let editingLuckyTrinketTaskDraft = false;
         let weeklyChallengeTaskMap = new Map();
         let luckyTrinketTwoStarFriendMap = new Map();
         let luckyTrinketTwoStarFriendSnapshotReady = false;
@@ -519,6 +542,47 @@
 
         function normalizeLuckyTrinket(value) {
             return value === 'buyer' || value === 'seller' ? value : null;
+        }
+
+        function getLuckyTrinketAccountTaskKey(account, cycleId) {
+            return JSON.stringify([String(cycleId || ''), String(account || '')]);
+        }
+
+        function getLuckyTrinketAccountTaskDocumentId(account, cycleId) {
+            return encodeURIComponent(getLuckyTrinketAccountTaskKey(account, cycleId));
+        }
+
+        function getLuckyTrinketAccountTaskRef(account, cycleId) {
+            return doc(db, 'luckyTrinketAccountTasks', getLuckyTrinketAccountTaskDocumentId(account, cycleId));
+        }
+
+        function buildLuckyTrinketAccountTasks(inventoryItems, completionMap = new Map(), cycle = getLuckyTrinketCycleForDate(getTodayStr())) {
+            if (!cycle) return [];
+            const groups = new Map();
+            inventoryItems.forEach(item => {
+                if (item?.status !== 'trading' || normalizeLuckyTrinket(item?.luckyTrinket) !== 'seller') return;
+                const cycleId = item.luckyTrinketCycleId || (isLegacySellerRecordRelevantToCycle(item, cycle) ? cycle.id : '');
+                if (cycleId !== cycle.id || typeof item.account !== 'string' || !item.account) return;
+                const key = getLuckyTrinketAccountTaskKey(item.account, cycle.id);
+                const existing = groups.get(key);
+                if (!existing) groups.set(key, { key, account: item.account, cycleId: cycle.id, count: 1, oldestAt: Number(item.scheduledAt ?? item.createdAt) || 0, legacyCompleted: item.luckyTrinketTaskCompleted === true });
+                else { existing.count += 1; existing.oldestAt = Math.min(existing.oldestAt, Number(item.scheduledAt ?? item.createdAt) || 0); existing.legacyCompleted ||= item.luckyTrinketTaskCompleted === true; }
+            });
+            return [...groups.values()].map(group => {
+                const record = completionMap.get(group.key);
+                return { ...group, completed: record ? record.completed === true : group.legacyCompleted };
+            }).sort((a, b) => Number(a.completed) - Number(b.completed) || a.oldestAt - b.oldestAt || a.account.localeCompare(b.account));
+        }
+
+        function applyLuckyTrinketAccountTaskStates(inventoryItems, completionMap, cycle = getLuckyTrinketCycleForDate(getTodayStr())) {
+            if (!cycle) return inventoryItems.map(item => ({ ...item }));
+            return inventoryItems.map(item => {
+                if (item?.status !== 'trading' || normalizeLuckyTrinket(item?.luckyTrinket) !== 'seller') return { ...item };
+                const cycleId = item.luckyTrinketCycleId || (isLegacySellerRecordRelevantToCycle(item, cycle) ? cycle.id : '');
+                if (cycleId !== cycle.id) return { ...item };
+                const record = completionMap.get(getLuckyTrinketAccountTaskKey(item.account, cycleId));
+                return record ? { ...item, luckyTrinketTaskCompleted: record.completed === true } : { ...item };
+            });
         }
 
         function isLuckyTrinketTaskCompleted(item) {
@@ -1488,10 +1552,66 @@
             ];
         }
 
+        function renderLuckyTrinketTaskList() {
+            const cycle = getLuckyTrinketCycleForDate(getTodayStr());
+            const tasks = buildLuckyTrinketAccountTasks(syncedPokemons, luckyTrinketAccountTaskMap, cycle);
+            const incomplete = tasks.filter(task => !task.completed);
+            const complete = tasks.filter(task => task.completed);
+            document.getElementById('luckyTrinketTaskCycleLabel').textContent = cycle ? cycle.label : '目前沒有進行中的首飾週期';
+            document.getElementById('luckyTrinketTaskSummary').textContent = `✅ 已完成 ${complete.length}　⏳ 未完成 ${incomplete.length}　總計 ${tasks.length} 個帳號`;
+            const renderSection = (containerId, rows) => {
+                const container = document.getElementById(containerId); container.innerHTML = '';
+                if (!rows.length) { const empty = document.createElement('p'); empty.className = 'rounded-xl bg-gray-50 p-3 text-center text-xs font-bold text-gray-400'; empty.textContent = '目前沒有帳號'; container.appendChild(empty); return; }
+                rows.forEach(task => {
+                    const card = document.createElement('article'); card.className = 'rounded-2xl border border-amber-100 bg-white p-4 shadow-sm'; card.dataset.accountTaskKey = task.key;
+                    const name = document.createElement('p'); name.className = 'text-lg font-black text-gray-800'; name.textContent = getLuckyTrinketAccountDisplayName(task.account); card.appendChild(name);
+                    if (editingLuckyTrinketTaskAccountKey === task.key) {
+                        const fieldset = document.createElement('fieldset'); fieldset.className = 'mt-3 space-y-2';
+                        const legend = document.createElement('legend'); legend.className = 'mb-2 text-sm font-black text-gray-700'; legend.textContent = '首飾任務狀態'; fieldset.appendChild(legend);
+                        [[false, '⏳ 任務未完成'], [true, '✅ 任務已完成']].forEach(([value, label]) => { const row = document.createElement('label'); row.className = 'flex min-h-11 items-center gap-3 rounded-xl border border-gray-200 px-3 text-sm font-bold'; const radio = document.createElement('input'); radio.type = 'radio'; radio.name = `trinket-task-${task.key}`; radio.checked = editingLuckyTrinketTaskDraft === value; radio.addEventListener('change', () => { editingLuckyTrinketTaskDraft = value; }); row.append(radio, document.createTextNode(label)); fieldset.appendChild(row); });
+                        const actions = document.createElement('div'); actions.className = 'mt-3 grid grid-cols-2 gap-2';
+                        const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'min-h-11 rounded-xl bg-gray-100 font-bold text-gray-600'; cancel.textContent = '取消'; cancel.addEventListener('click', () => { editingLuckyTrinketTaskAccountKey = null; renderLuckyTrinketTaskList(); });
+                        const save = document.createElement('button'); save.type = 'button'; save.className = 'min-h-11 rounded-xl bg-amber-600 font-bold text-white'; save.textContent = '儲存'; save.addEventListener('click', () => saveLuckyTrinketAccountTask(task, editingLuckyTrinketTaskDraft, save)); actions.append(cancel, save); card.append(fieldset, actions);
+                    } else {
+                        const status = document.createElement('p'); status.className = `mt-2 text-sm font-black ${task.completed ? 'text-emerald-700' : 'text-amber-700'}`; status.textContent = task.completed ? '✅ 首飾任務已完成' : '⏳ 首飾任務未完成'; card.appendChild(status);
+                        if (task.completed) { const priority = document.createElement('p'); priority.className = 'mt-1 text-sm font-black text-orange-600'; priority.textContent = '⚡ 可以優先交換'; card.appendChild(priority); }
+                        const count = document.createElement('p'); count.className = 'mt-2 text-xs font-bold text-gray-500'; count.textContent = `待交換：${task.count} 筆`; card.appendChild(count);
+                        const actions = document.createElement('div'); actions.className = 'mt-3 grid grid-cols-2 gap-2';
+                        const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'min-h-11 rounded-xl bg-blue-600 px-2 text-sm font-bold text-white'; copy.textContent = '📋 複製帳號密碼'; copy.addEventListener('click', async () => { await navigator.clipboard.writeText(task.account); copy.textContent = '✅ 已複製'; setTimeout(() => { copy.textContent = '📋 複製帳號密碼'; }, 1500); });
+                        const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'min-h-11 rounded-xl border border-amber-300 bg-amber-50 text-sm font-black text-amber-700'; edit.textContent = '編輯'; edit.addEventListener('click', () => { editingLuckyTrinketTaskAccountKey = task.key; editingLuckyTrinketTaskDraft = task.completed; renderLuckyTrinketTaskList(); }); actions.append(copy, edit); card.appendChild(actions);
+                    }
+                    container.appendChild(card);
+                });
+            };
+            renderSection('luckyTrinketTaskIncompleteList', incomplete);
+            renderSection('luckyTrinketTaskCompleteList', complete);
+        }
+
+        async function setLuckyTrinketAccountTaskCompleted(account, cycleId, completed) {
+            const taskRef = getLuckyTrinketAccountTaskRef(account, cycleId);
+            const matchingQuery = query(collection(db, 'inventory'), where('account', '==', account), where('status', '==', 'trading'));
+            await runTransaction(db, async transaction => {
+                const matching = await transaction.get(matchingQuery);
+                const now = Date.now();
+                transaction.set(taskRef, { account, cycleId, completed, updatedAt: now, source: 'account-task-list' });
+                matching.docs.forEach(snapshot => { const item = snapshot.data(); if (normalizeLuckyTrinket(item.luckyTrinket) === 'seller' && (item.luckyTrinketCycleId === cycleId || isLegacySellerRecordRelevantToCycle(item, LUCKY_TRINKET_CYCLES.find(cycle => cycle.id === cycleId)))) transaction.update(snapshot.ref, { luckyTrinketTaskCompleted: completed }); });
+            });
+        }
+
+        async function saveLuckyTrinketAccountTask(task, completed, button) {
+            if (completed === task.completed) { editingLuckyTrinketTaskAccountKey = null; renderLuckyTrinketTaskList(); return; }
+            const message = completed ? '確定將此帳號標記為「首飾任務已完成」？\n完成後，這個帳號的我出首飾交易將提升為優先交換。' : '確定改回「首飾任務未完成」？\n相關交易將取消首飾任務完成的優先權。';
+            if (!window.confirm(message)) return;
+            button.disabled = true;
+            try { await setLuckyTrinketAccountTaskCompleted(task.account, task.cycleId, completed); editingLuckyTrinketTaskAccountKey = null; }
+            catch (error) { console.error('更新首飾任務失敗：', error); alert('更新首飾任務失敗，請稍後再試。'); button.disabled = false; }
+        }
+
         function rebuildEffectiveInventory() {
-            pokemons = mergeInventoryItems(syncedPokemons, pendingInventoryItems);
+            pokemons = applyLuckyTrinketAccountTaskStates(mergeInventoryItems(syncedPokemons, pendingInventoryItems), luckyTrinketAccountTaskMap);
             pokemons.sort((a, b) => (a.tradeDate || '9999').localeCompare(b.tradeDate || '9999') || b.createdAt - a.createdAt);
             renderLuckyTrinketAccounts();
+            renderLuckyTrinketTaskList();
         }
 
         onSnapshot(collection(db, "accounts"), (snapshot) => {
@@ -1569,6 +1689,32 @@
             if (!copyModal.classList.contains('hidden')) refreshStockCopyPriceUi();
             refreshArrangeLuckyTrinketAvailability();
         }, error => console.error('讀取 GO Pass 首飾鎖失敗：', error));
+
+        onSnapshot(collection(db, "luckyTrinketAccountTasks"), (snapshot) => {
+            luckyTrinketAccountTaskMap = new Map(snapshot.docs.map(snapshotDoc => {
+                const data = snapshotDoc.data();
+                return [getLuckyTrinketAccountTaskKey(data.account, data.cycleId), { id: snapshotDoc.id, ...data }];
+            }));
+            luckyTrinketAccountTasksSnapshotReady = true;
+            rebuildEffectiveInventory();
+            render(); renderTimeline(); renderLuckyTrinketTaskList();
+            reconcileLegacyLuckyTrinketAccountTasks().catch(error => console.error('舊首飾任務完成狀態回填失敗：', error));
+        }, error => console.error('讀取首飾任務完成狀態失敗：', error));
+
+        async function reconcileLegacyLuckyTrinketAccountTasks() {
+            if (legacyLuckyTrinketAccountTasksReconciled || !inventorySnapshotReady || !luckyTrinketAccountTasksSnapshotReady) return;
+            legacyLuckyTrinketAccountTasksReconciled = true;
+            const cycle = getLuckyTrinketCycleForDate(getTodayStr());
+            if (!cycle) return;
+            const legacy = buildLuckyTrinketAccountTasks(syncedPokemons, new Map(), cycle).filter(task => task.legacyCompleted && !luckyTrinketAccountTaskMap.has(task.key));
+            for (const task of legacy) {
+                const taskRef = getLuckyTrinketAccountTaskRef(task.account, task.cycleId);
+                await runTransaction(db, async transaction => {
+                    const existing = await transaction.get(taskRef);
+                    if (!existing.exists()) transaction.set(taskRef, { account: task.account, cycleId: task.cycleId, completed: true, updatedAt: Date.now(), source: 'legacy-seller-trade-backfill' });
+                });
+            }
+        }
 
         onSnapshot(collection(db, "luckyTrinketTwoStarFriends"), (snapshot) => {
             luckyTrinketTwoStarFriendMap = new Map(snapshot.docs.map(snapshotDoc => [snapshotDoc.id, snapshotDoc.data()]));
@@ -1687,6 +1833,7 @@
             refreshArrangeLuckyTrinketAvailability();
             reconcileLegacyLuckyTrinketTwoStarFriends().catch(error => console.error('舊本期二星好友回填失敗：', error));
             reconcileLegacyLuckyTrinketLocksForRolloutCycle().catch(error => console.error('舊首飾鎖回填失敗：', error));
+            reconcileLegacyLuckyTrinketAccountTasks().catch(error => console.error('舊首飾任務完成狀態回填失敗：', error));
             reconcileLegacyWeeklyChallengeTasks().catch(error => console.error('舊週間挑戰名單回填失敗：', error));
             reconcileLegacyDailyTradeCompletionLocks().catch(error => console.error('舊每日交換紀錄回填失敗：', error));
             
@@ -1953,9 +2100,14 @@
                         const lockSnapshot = await transaction.get(lockRef);
                         const exemptionRef = getLuckyTrinketTwoStarFriendRef(accountName, partner, cycle.id);
                         const exemptionSnapshot = await transaction.get(exemptionRef);
+                        const accountTaskRef = getLuckyTrinketAccountTaskRef(accountName, cycle.id);
+                        const accountTaskSnapshot = await transaction.get(accountTaskRef);
                         if (lockSnapshot.exists() && isActiveLuckyTrinketCycleLock(lockSnapshot.data()) && lockSnapshot.data().inventoryId !== selectedId) throw new Error('TRINKET_CONFLICT');
                         const now = Date.now();
                         transaction.set(lockRef, { cycleId: cycle.id, account: accountName, inventoryId: selectedId, state: 'reserved', reservedAt: now, usedAt: null, updatedAt: now, source: 'runtime' });
+                        const accountTaskCompleted = accountTaskSnapshot.exists() ? accountTaskSnapshot.data().completed === true : selectedLuckyTrinketTaskCompleted;
+                        selectedLuckyTrinketTaskCompleted = accountTaskCompleted;
+                        if (!accountTaskSnapshot.exists() || selectedLuckyTrinketTaskCompleted !== accountTaskCompleted) transaction.set(accountTaskRef, { account: accountName, cycleId: cycle.id, completed: accountTaskCompleted, updatedAt: now, source: 'arrange-trade' });
                         if (!exemptionSnapshot.exists()) transaction.set(taskRef, { inventoryId: selectedId, account: accountName, partner, luckyTrinket: 'seller', luckyTrinketCycleId: cycle.id, pokemonLabel: formatInventoryCopyText(inventorySnapshot.data()), createdAt: now, source: 'runtime' });
                         transaction.update(inventoryRef, { status: 'trading', partner, tradeDate: autoDate, luckyTrinket: 'seller', luckyTrinketTaskCompleted: selectedLuckyTrinketTaskCompleted, luckyTrinketCycleId: cycle.id, weeklyChallengeTaskId: exemptionSnapshot.exists() ? deleteField() : taskRef.id, luckyTrinketTwoStarFriendCycleId: exemptionSnapshot.exists() ? cycle.id : deleteField(), scheduledAt: now, weeklyChallengeCompletedWeekId: deleteField(), weeklyChallengeCompletedAt: deleteField() });
                     });
@@ -2061,6 +2213,10 @@
                 }
                 transaction.update(inventoryRef, updates);
             });
+            if (nextTrinket === 'seller') {
+                const cycleId = localItem.luckyTrinketCycleId || getLuckyTrinketCycleForDate(getTodayStr())?.id;
+                if (cycleId) await setLuckyTrinketAccountTaskCompleted(localItem.account, cycleId, editingLuckyTrinketTaskCompleted);
+            }
         }
 
         saveEditTradeBtn.addEventListener('click', async () => {
