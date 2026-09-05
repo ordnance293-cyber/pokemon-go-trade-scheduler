@@ -41,10 +41,48 @@ test('task modal is read-only by default, copies exact credentials, and has guar
 });
 test('one account-cycle listener and atomic scoped update preserve scheduling fields',()=>{
  assert.equal((script.match(/onSnapshot\(collection\(db, "luckyTrinketAccountTasks"\)/g)||[]).length,1);
- const update=extract('setLuckyTrinketAccountTaskCompleted');
+ const update=extract('setLuckyTrinketAccountTaskCompleted').replace(/^function /,'async function ');
  assert.match(update,/where\('account', '==', account\).*where\('status', '==', 'trading'\)/s);
+ assert.match(update,/await getDocs\(matchingQuery\)/);
+ assert.doesNotMatch(update,/transaction\.get\(matchingQuery\)/);
+ assert.match(update,/candidateRefs\.map\(documentRef => transaction\.get\(documentRef\)\)/);
  assert.match(update,/normalizeLuckyTrinket\(item\.luckyTrinket\) === 'seller'/);
  assert.doesNotMatch(update,/tradeDate\s*:/); assert.doesNotMatch(update,/scheduledAt\s*:/);
+});
+test('account task save queries outside the transaction and revalidates every candidate document',async()=>{
+ const calls=[];
+ const documents=[
+  seller({id:'seller',tradeDate:'2026-01-12',scheduledAt:100}),
+  seller({id:'buyer',luckyTrinket:'buyer',luckyTrinketTaskCompleted:false}),
+  seller({id:'normal',luckyTrinket:null,luckyTrinketTaskCompleted:false}),
+  seller({id:'wrong-cycle',luckyTrinketCycleId:'cycle-b',luckyTrinketTaskCompleted:false}),
+  seller({id:'changed-status',status:'done',luckyTrinketTaskCompleted:false})
+ ];
+ const refs=documents.map(item=>({id:item.id,item}));
+ const transaction={
+  async get(ref){ assert.ok(!ref.isQuery,'Transaction.get received a Query'); calls.push(['get',ref.id]); return ref.isTask?{exists:()=>false,data:()=>({})}:{exists:()=>true,data:()=>ref.item,ref}; },
+  set(ref,value){ calls.push(['set',ref.id,value]); },
+  update(ref,value){ calls.push(['update',ref.id,value]); Object.assign(ref.item,value); }
+ };
+ const update=extract('setLuckyTrinketAccountTaskCompleted').replace(/^function /,'async function ');
+ const run=vm.runInNewContext(`(async()=>{${extract('normalizeLuckyTrinket')}\n${extract('timestampToLocalDate')}\n${extract('isLegacySellerRecordRelevantToCycle')}\n${update};return setLuckyTrinketAccountTaskCompleted})()`,{
+  db:{}, LUCKY_TRINKET_CYCLES:[cycle], LEGACY_LUCKY_TRINKET_ROLLOUT_CYCLE_ID:'cycle-a',
+  collection:()=>({}), where:(...args)=>args, query:()=>({isQuery:true}),
+  getDocs:async queryValue=>{ assert.equal(queryValue.isQuery,true); calls.push(['getDocs']); return {docs:refs.map(ref=>({ref}))}; },
+  getLuckyTrinketAccountTaskRef:()=>({id:'task',isTask:true}),
+  runTransaction:async(_db,callback)=>callback(transaction), Date, Promise
+ });
+ const save=await run;
+ await save('full-user;Secret!','cycle-a',true);
+ assert.deepEqual(calls.filter(([kind])=>kind==='update').map(([,id])=>id),['seller']);
+ assert.equal(documents[0].luckyTrinketTaskCompleted,true);
+ assert.equal(documents[0].tradeDate,'2026-01-12'); assert.equal(documents[0].scheduledAt,100);
+ for (const item of documents.slice(1)) assert.equal(item.luckyTrinketTaskCompleted,false);
+ const firstTransactionRead=calls.findIndex(([kind])=>kind==='get');
+ assert.ok(calls.findIndex(([kind])=>kind==='getDocs') < firstTransactionRead);
+ assert.ok(calls.filter(([kind])=>kind==='get').length===refs.length+1);
+ await save('full-user;Secret!','cycle-a',false);
+ assert.equal(documents[0].luckyTrinketTaskCompleted,false);
 });
 test('future arrange inherits authoritative account-cycle completion and legacy backfill is seller scoped',()=>{
  assert.match(script,/accountTaskSnapshot\.exists\(\) \? accountTaskSnapshot\.data\(\)\.completed === true/);

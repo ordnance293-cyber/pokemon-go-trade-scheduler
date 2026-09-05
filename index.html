@@ -352,7 +352,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, setDoc, onSnapshot, query, where, updateDoc, doc, deleteDoc, deleteField, writeBatch, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, setDoc, onSnapshot, query, where, getDocs, updateDoc, doc, deleteDoc, deleteField, writeBatch, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBG_bVJ6-SxRHPBWyUmQUCICMfsvc9ixg4",
@@ -1590,11 +1590,19 @@
         async function setLuckyTrinketAccountTaskCompleted(account, cycleId, completed) {
             const taskRef = getLuckyTrinketAccountTaskRef(account, cycleId);
             const matchingQuery = query(collection(db, 'inventory'), where('account', '==', account), where('status', '==', 'trading'));
+            const matching = await getDocs(matchingQuery);
+            const candidateRefs = matching.docs.map(snapshot => snapshot.ref);
+            const cycle = LUCKY_TRINKET_CYCLES.find(candidate => candidate.id === cycleId);
             await runTransaction(db, async transaction => {
-                const matching = await transaction.get(matchingQuery);
+                await transaction.get(taskRef);
+                const candidateSnapshots = await Promise.all(candidateRefs.map(documentRef => transaction.get(documentRef)));
                 const now = Date.now();
                 transaction.set(taskRef, { account, cycleId, completed, updatedAt: now, source: 'account-task-list' });
-                matching.docs.forEach(snapshot => { const item = snapshot.data(); if (normalizeLuckyTrinket(item.luckyTrinket) === 'seller' && (item.luckyTrinketCycleId === cycleId || isLegacySellerRecordRelevantToCycle(item, LUCKY_TRINKET_CYCLES.find(cycle => cycle.id === cycleId)))) transaction.update(snapshot.ref, { luckyTrinketTaskCompleted: completed }); });
+                candidateSnapshots.forEach(snapshot => {
+                    if (!snapshot.exists()) return;
+                    const item = snapshot.data();
+                    if (item.account === account && item.status === 'trading' && normalizeLuckyTrinket(item.luckyTrinket) === 'seller' && (item.luckyTrinketCycleId === cycleId || isLegacySellerRecordRelevantToCycle(item, cycle))) transaction.update(snapshot.ref, { luckyTrinketTaskCompleted: completed });
+                });
             });
         }
 
@@ -1604,7 +1612,7 @@
             if (!window.confirm(message)) return;
             button.disabled = true;
             try { await setLuckyTrinketAccountTaskCompleted(task.account, task.cycleId, completed); editingLuckyTrinketTaskAccountKey = null; }
-            catch (error) { console.error('更新首飾任務失敗：', error); alert('更新首飾任務失敗，請稍後再試。'); button.disabled = false; }
+            catch (error) { console.error('更新首飾任務失敗：', error?.code, error?.message, error); alert('更新首飾任務失敗，請稍後再試。'); button.disabled = false; }
         }
 
         function rebuildEffectiveInventory() {
